@@ -2,9 +2,9 @@
 #'
 #' For each site (observation or prediction) the total catchment area is
 #' calculated ('H2OArea'). Additionally, other attributes (predictor variables)
-#' can be derived based on given raster maps. This function calculates
+#' can be derived based on given raster or vector maps. This function calculates
 #' exact values for catchments derived with
-#' \href{https://grass.osgeo.org/grass70/manuals/addons/r.stream.basins.html}{r.stream.basins}
+#' \href{https://grass.osgeo.org/grass74/manuals/addons/r.stream.basins.html}{r.stream.basins}
 #' and can take considerable time if there are many sites.
 #' Catchment raster maps can optionally be stored as "sitename_catchm_X" (X = locID).
 
@@ -14,26 +14,35 @@
 #' attributes shall be calculated for. "sites" (default) refers to the observation sites.
 #' @param input_raster character vector (optional); name of additional raster
 #'   maps to calculate attributes from.
-#' @param stat character vector (optional); statistics to be calculated, one of:
+#' @param stat_rast character vector (optional); statistics to be calculated, one of:
 #'   min, max, mean, stddev, variance, sum, median or percentile_X (where X
 #'   gives the desired percentile e.g. 25 for the first). Must be provided if 
 #'   \code{input_raster} are given.
-#' @param attr_name character vector (optional); column name for the attributes
+#' @param attr_name_rast character vector (optional); column name for the attributes
 #'   to be calculated. Attribute names must not be longer than 10 characters.
 #'   Must be provided if \code{input_raster} are given.
+#' @param input_vector character string vector (optional); name of additional vector
+#'   maps to calculate attributes from.
+#' @param stat_vect character string vector (optional); statistics to be calculated, 
+#'  one of: percentage or count. Must be provided if \code{input_vector} is given.
+#' @param attr_name_vect character string vector (optional); column name(s) in 
+#'  the vector file provided to calculate the attributes from (if \code{input_vector}
+#'  is a polygon map and stat_vect is 'percent') or giving the new name attributes
+#'  to calculate (if \code{input_vector} is a point map and stat_vect is 'count'.
+#'  Must be provided if \code{input_vector} is given.
 #' @param round_dig integer; number of digits to round results to. Can be a vector
 #'   of different values or just one value for all attributes.
 #' @param calc_basin_area boolean; shall the catchment area be calculated? (Useful
-#'  if the function has been called before with \code{keep_basins = TRUE}.)
+#'  to set to FALSE if the function has been called before with \code{keep_basins = TRUE}.)
 #' @param keep_basins boolean; shall raster maps of all the watersheds be kept?
 #'
 #' @return Nothing. The function appends new columns to the \code{sites_map} attribute table
 #' \itemize{
 #'  \item{'H2OArea':} {Total watershed area of the watershed upstream of each site.}
-#'  \item{attr_name:} {Additional optional attributes calculated based on input_raster maps.}
+#'  \item{attr_name_rast:} {Additional optional attributes calculated based on input_raster maps.}
 #' }
-#' Please note that for sampling points that lie in the same dem raster cell 
-#'  along a stream identical values are calculated, because identical watersheds
+#' Please note that for sampling points that lie in the same DEM raster cell 
+#'  along a stream identical values are calculated because identical watersheds
 #'  are derived.
 #'
 #' @note \code{\link{import_data}}, \code{\link{derive_streams}},
@@ -51,79 +60,108 @@
 #' \donttest{
 #' # Initiate GRASS session
 #' if(.Platform$OS.type == "windows"){
-#'   gisbase = "c:/Program Files/GRASS GIS 7.2.0"
-#'   } else {
-#'   gisbase = "/usr/lib/grass72/"
-#'   }
+#'   gisbase = "c:/Program Files/GRASS GIS 7.4.0"
+#' } else {
+#'   gisbase = "/usr/lib/grass74/"
+#' }
 #' initGRASS(gisBase = gisbase,
-#'     home = tempdir(),
-#'     override = TRUE)
-#'
+#'      home = tempdir(),
+#'      override = TRUE)
+#' 
 #' # Load files into GRASS
 #' dem_path <- system.file("extdata", "nc", "elev_ned_30m.tif", package = "openSTARS")
 #' sites_path <- system.file("extdata", "nc", "sites_nc.shp", package = "openSTARS")
-#' setup_grass_environment(dem = dem_path, sites = sites_path)
+#' setup_grass_environment(dem = dem_path)
 #' import_data(dem = dem_path, sites = sites_path)
 #' gmeta()
-#'
+#' 
 #' # Derive streams from DEM
 #' derive_streams(burn = 0, accum_threshold = 700, condition = TRUE, clean = TRUE)
-#'
+#' 
 #' # Prepare edges
 #' calc_edges()
 #' execGRASS("r.slope.aspect", flags = c("overwrite","quiet"),
-#' parameters = list(
-#'   elevation = "dem",
-#'   slope = "slope"
-#'   ))
-#' calc_attributes_edges(input_raster = "slope", stat = "max", attr_name = "maxSlo")
-#'
+#'           parameters = list(
+#'             elevation = "dem",
+#'             slope = "slope"
+#'           ))
+#' calc_attributes_edges(input_raster = "slope", stat_rast = "max", attr_name_rast = "maxSlo")
+#' 
 #' # Prepare sites
 #' calc_sites()
-#' calc_attributes_sites_approx(input_attr_name = "maxSlo", stat = "max")
-#' calc_attributes_sites_exact(input_raster = "slope", attr_name = "maxSloE", stat = "max")
-#'
+#' calc_attributes_sites_approx(input_attr_name = "maxSlo", output_attr_name = "maxSloA", stat = "max")
+#' calc_attributes_sites_exact(input_raster = "slope", attr_name_rast = "maxSloE", stat_rast = "max")
+#' 
 #' # Plot data
 #' dem <- readRAST('dem', ignore.stderr = TRUE)
 #' edges <- readVECT('edges', ignore.stderr = TRUE)
 #' sites <- readVECT('sites', ignore.stderr = TRUE)
-#' plot(dem, col = terrain.colors(20))
-#' mm <- range(c(edges$maxSlo_e, sites$maxSlo, sites$maxSloE))
+#' plot(dem, col = gray(seq(0,1,length.out=20)))
+#' mm <- range(c(edges$maxSlo_e, sites$maxSloA, sites$maxSloE))
 #' b <- seq(from = mm[1], to = mm[2] + diff(mm) * 0.01, length.out = 10)
-#' c_ramp <- colorRampPalette(c("blue", "red"))
+#' c_ramp <- colorRampPalette(c("white", "blue", "orange", "red"))
 #' cols <- c_ramp(length(b))[as.numeric(cut(edges$maxSlo_e, breaks = b, right = FALSE))]
-#' lines(edges,col = cols, lwd = 2)
-#' cols <- c_ramp(length(b))[as.numeric(cut(sites$maxSlo,breaks = b,right = FALSE))]
-#' points(sites, pch = 19, col = cols)
+#' plot(edges,col = cols, lwd = 2, add = TRUE)
+#' cols <- c_ramp(length(b))[as.numeric(cut(sites$maxSloA,breaks = b,right = FALSE))]
+#' plot(sites, pch = 19, col = cols, cex = 2, add = TRUE)
 #' cols <- c_ramp(length(b))[as.numeric(cut(sites$maxSloE,breaks = b,right = FALSE))]
-#' points(sites, pch = 21, bg = cols, cex = 0.7)
-#' # Some points in the centre of the map indicate a difference in max slope between
+#' plot(sites, pch = 21, bg = cols, cex = 1.1, add = TRUE)
+#' # Some points in the lower centre of the map indicate a difference in max slope between
 #' # approximate and exact calculation (different colors for inner and outer points)
 #' }
 
 calc_attributes_sites_exact <- function(sites_map = "sites",
                                         input_raster = NULL,
-                                        stat = NULL,
-                                        attr_name = NULL,
+                                        stat_rast = NULL,
+                                        attr_name_rast = NULL,
+                                        input_vector = NULL,
+                                        stat_vect = NULL,
+                                        attr_name_vect = NULL,
                                         round_dig = 2,
                                         calc_basin_area = TRUE,
                                         keep_basins = FALSE){
-
-  if(length(input_raster) != length(stat) | length(input_raster) != length(attr_name) | length(attr_name) != length(stat))
+  
+  if(length(input_raster) != length(stat_rast) | length(input_raster) != length(attr_name_rast) | length(attr_name_rast) != length(stat_rast))
     stop(paste0("There must be the same number of input raster files (",length(input_raster), "), statistics to calculate (",
-                length(stat), ") and attribute names (", length(attr_name),")."))
+                length(stat_rast), ") and attribute names (", length(attr_name_rast),")."))
 
-  if(!is.null(stat) & any(stat %in% c("min","max", "mean", "stddev","variance","sum","median", "percent") + grepl("percentile", stat)) == 0) # TRUE = 1, FALSE = 0
+  if(length(input_vector) != length(stat_vect))
+    stop(paste0("There must be the same number of input vector files (",length(input_vector), ")
+                and statistics to calculate (", length(stat_vect), ")."))
+  
+  if(!is.null(stat_rast) & any(stat_rast %in% c("min","max", "mean", "stddev","variance","sum","median", "percent") + grepl("percentile", stat_rast)) == 0) # TRUE = 1, FALSE = 0
     stop('Statistisc to calculate must be one of "min","max", "mean", "stddev","variance","sum", "median", "percentile_X" or "percent".')
 
-  if(is.null(stat) & !calc_basin_area)
-    stop("Either the catchment areas are calculated or a statistic to calculate must be provided.")
+  if(any(!stat_vect %in% c("percent", "count")))
+    stop('statistics to calculate must be one of "count" or "percent".')
   
+  # 1 for area, 2 for points
+  vtype <- rep(1, length(stat_vect))
+  if(!is.null(stat_vect)){
+    for(i in 1:length(stat_vect)){
+      a <- execGRASS("v.info", flags = "t",
+                     parameters = list(
+                       map = input_vector[i]
+                     ), intern = T)
+      a <- do.call(rbind,strsplit(a, "="))
+      k <- which(a[,1] == "points")
+      if(as.numeric(a[k,2]) != 0){
+        vtype[i] <- 2
+        if(stat_vect[i] != "count"){
+          stop('If an input vector is of type point the statistic to calculate must be "count".')
+        }
+      }
+    }
+  }
+  
+  if(is.null(stat_rast) & is.null(stat_vect) & !calc_basin_area)
+    stop("Either the catchment areas are calculated or a statistic to calculate must be provided.")
+
   temp_dir <- tempdir()
 
   if(length(round_dig) == 1)
-    round_dig <- rep(round_dig, length(stat)+1)
-  if(length(round_dig) == length(stat))
+    round_dig <- rep(round_dig, length(stat_rast)+1)
+  if(length(round_dig) == length(stat_rast))
     round_dig <- c(round_dig[1], round_dig)
 
   rast <- execGRASS("g.list",
@@ -133,32 +171,87 @@ calc_attributes_sites_exact <- function(sites_map = "sites",
                     intern = TRUE)
   if ("MASK" %in% rast)
     execGRASS("r.mask",flags = c("r", "quiet"))
+  
+  if(!all(input_raster %in% rast)){
+    if(length(input_raster)>1){
+      i <- which(input_raster %in% rast)
+      mes <- input_raster[-i]
+    } else {
+      mes <- input_raster
+    }
+    stop(paste0("Missing input raster data ", paste0("'",mes,"'", collapse = ", "), 
+                ". Please give valid raster names. \nAvailable raster are ",  
+                paste0("'",rast,"'", collapse = ", ")))
+  }
 
-  d.sites <- readVECT(sites_map, ignore.stderr = FALSE)
+  vect <- execGRASS("g.list",
+                    parameters = list(
+                      type = "vector"
+                    ),
+                    intern = TRUE)
+  
+  if(!all(input_vector %in% vect)){
+    if(length(input_vector)>1){
+      i <- which(input_vector %in% vect)
+      mes <- input_vector[-i]
+    } else {
+      mes <- input_vector
+    }
+    stop(paste0("Missing input vector data ", paste0("'",mes,"'", collapse = ", "), 
+                ". Please give valid vector file names. \nAvailable vector files are ",  
+                paste0("'",vect,"'", collapse = ", ")))
+  }
+  
+  d.sites <- readVECT(sites_map, ignore.stderr = TRUE)
   
   if(!all(paste0(sites_map,"_catchm_",d.sites@data$locID) %in% rast)){
     calc_basin_area <- TRUE
   }
   if(any(d.sites@data$ratio == 0) & calc_basin_area){
-    d.edges <- readVECT("edges", ignore.stderr = FALSE)
+    d.edges <- readVECT("edges", ignore.stderr = TRUE)
     dt.edges <- setDT(d.edges@data)
     dt.edges[, colnames(dt.edges)[-which(colnames(dt.edges) %in% c("cat", "stream","prev_str01","prev_str02","rid","H2OArea"))] := NULL]
     rm(d.edges)
   }
 
-  message("Intersecting attributes for ",nrow(d.sites@data)," sites...\n")
-
-  # progress bar
-  pb <- progress_bar$new(total = nrow(d.sites@data))
-  
   locIDs <- unique(d.sites@data$locID)
   if(calc_basin_area){
-    dat <- matrix(nrow = length(locIDs), ncol = length(attr_name)+2)
-    colnames(dat) <- c("H2OArea", attr_name, "locID")
+    dat <- matrix(nrow = length(locIDs), ncol = length(attr_name_rast)+2, data = 0)
+    colnames(dat) <- c("H2OArea", attr_name_rast, "locID")
   } else {
-    dat <- matrix(nrow = length(locIDs), ncol = length(attr_name) + 1)
-    colnames(dat) <- c(attr_name, "locID")
+    dat <- matrix(nrow = length(locIDs), ncol = length(attr_name_rast) + 1, data = 0)
+    colnames(dat) <- c(attr_name_rast, "locID")
   }
+  if(!is.null(input_vector)){
+    attribute_cats <- NULL
+    for(i in 1:length(input_vector)){
+      if(vtype[i] == 1){
+        attribute_cats <- c(attribute_cats, 
+                           unique(execGRASS("db.select", flags = c("c"),
+                                            parameters = list(
+                                              sql = paste0("select ", attr_name_vect[i], " from ",input_vector[i])
+                                            ), intern = T))
+        )
+      } else {
+        attribute_cats <- c(attribute_cats, attr_name_vect[i])
+      }
+      if(length(round_dig) < length(attribute_cats) + length(input_raster) + calc_basin_area)
+        round_dig <- c(round_dig, rep(round_dig[1], length(attribute_cats)))
+    }
+    d1 <- matrix(ncol = length(attribute_cats), nrow = length(locIDs), data = 0)
+    colnames(d1) <- attribute_cats
+    dat <- cbind(dat, d1)
+  }
+  
+  cnames_sites <- execGRASS("db.columns", flags = "quiet",
+                             parameters = list(
+                               table = "sites"
+                             ), intern = T)
+  
+  message("Intersecting attributes for ",nrow(d.sites@data)," sites ...")
+  # progress bar
+  pb <- progress::progress_bar$new(total = nrow(d.sites@data))
+  
   for (i in seq_along(locIDs)) {
     #message(i)
     locID <- locIDs[i]
@@ -249,22 +342,24 @@ calc_attributes_sites_exact <- function(sites_map = "sites",
                     intern = TRUE)[1], split = ' ')[[1]][[2]]))/1000000,round_dig[1])
       }
     }
+    
+    # raster data
     # calculate unviriate statistics per watershed
-    # set mask to the current basin
-    execGRASS("r.mask",
-              flags = c("overwrite", "quiet"),
-              parameters = list(
-                raster = paste0(sites_map, "_catchm_",locID)))
-    if(length(stat) > 0){
-      for(j in 1:length(stat)){
-        if(stat[j] == "median"){
+    if(length(stat_rast) > 0){
+      # set mask to the current basin
+      execGRASS("r.mask",
+                flags = c("overwrite", "quiet"),
+                parameters = list(
+                  raster = paste0(sites_map, "_catchm_",locID)))
+      for(j in 1:length(stat_rast)){
+        if(stat_rast[j] == "median"){
           st <- execGRASS("r.univar",
                           flags = c("overwrite", "quiet","g", "e"),
                           parameters = list(
                             map = input_raster[j]), intern = TRUE)
         } else {
-          if(grepl("percentile",stat[j])){
-            p <- as.numeric(as.character(unlist(strsplit(stat[j],"_"))[2]))
+          if(grepl("percentile",stat_rast[j])){
+            p <- as.numeric(as.character(unlist(strsplit(stat_rast[j],"_"))[2]))
             st <- execGRASS("r.univar",
                             flags = c("overwrite", "quiet","g", "e"),
                             parameters = list(
@@ -280,7 +375,7 @@ calc_attributes_sites_exact <- function(sites_map = "sites",
         st <- setDT(data.frame(do.call(rbind,strsplit(st,"="))))
         if(nrow(st) > 0){
           st[,X2 := as.numeric(as.character(X2))]
-          if(grepl("percent", stat[j])){
+          if(grepl("percent", stat_rast[j])){
             if(st[X1=="variance",X2] == 0){  # if coded as something and NA, null(), no data value
               st2 <- execGRASS("r.univar",
                                flags = c("overwrite", "quiet","g"),
@@ -289,23 +384,103 @@ calc_attributes_sites_exact <- function(sites_map = "sites",
               n <- st2[grep("^n=", st2)]
               n <- as.numeric(substring(n,3,nchar(n)))
               st <- rbindlist(list(st, data.table(X1 = "n2", X2 = n)))
-              dat[i,attr_name[j]] <- round(st[X1 == "n", X2] / st[X1 == "n2", X2], round_dig[j + 1])
+              dat[i,attr_name_rast[j]] <- round(st[X1 == "n", X2] / st[X1 == "n2", X2], round_dig[j + 1])
               # this was wrong cells and non_null_cells stell refers to the 
               # whole map; MASK only sets to null value
               # dat[i,j+1] <- round((st[X1 == "cells", X2] - st[X1 == "null_cells", X2])/
               #                     st[X1 == "cells", X2], round_dig[j+1])
             } else{  # if coded as 1 and 0, "mean" gives ratio
-              dat[i,attr_name[j]] <- round(st[X1 == "mean",X2],round_dig[j+1])
+              dat[i,attr_name_rast[j]] <- round(st[X1 == "mean",X2],round_dig[j+1])
             }
           }else
-            dat[i,attr_name[j]] <- round(st[X1 == stat[j],X2],round_dig[j+1])
+            dat[i,attr_name_rast[j]] <- round(st[X1 == stat_rast[j],X2],round_dig[j+1])
         } else
-          dat[i,attr_name[j]] <- 0
+          dat[i,attr_name_rast[j]] <- 0
+      }
+      # Remove the mask!
+      execGRASS("r.mask",
+                flags = c("r", "quiet"))
+    }
+    
+    ###################################################
+    # vector data
+    if(length(input_vector) > 0){
+      # convert raster catchment to vector
+      rname <- paste0(sites_map, "_catchm_",locID)
+      vname <- paste0(sites_map, "_catchm_",locID, "_v")
+      execGRASS("r.to.vect", flags = c("overwrite","v", "quiet"),
+                parameters = list(
+                  input = rname,
+                  output = vname,
+                  type = "area"
+                ))
+      # calculate area
+      execGRASS("v.db.addcolumn",
+                parameters = list(
+                  map = vname,
+                  columns = "area double precision"
+                ))
+      execGRASS("v.to.db",flags = "quiet",
+                parameters = list(
+                  map = vname,
+                  option = "area",
+                  columns = "area"
+                ))
+      carea <- sum(as.numeric(execGRASS("v.db.select",flags = "quiet",
+                                        parameters = list(
+                                          map = vname,
+                                          columns = "area"
+                                        ), intern = T)[-1]))
+      j.count <- 1 + calc_basin_area * length(input_raster)
+      for(j in 1:length(input_vector)){
+        # if this is no point vector
+        if(vtype[j] == 1){
+          # intersect with catchment
+          execGRASS("v.overlay", flags = c("overwrite","quiet"),
+                    parameters = list(
+                      ainput = input_vector[j],
+                      binput = vname,
+                      operator = "and",
+                      output = "intersect_out",
+                      olayer = "1,0,0"
+                    ), ignore.stderr = T, intern = T)
+          # calculate area of all features
+          execGRASS("v.db.addcolumn",
+                    parameters = list(
+                      map = "intersect_out",
+                      columns = "area double precision"
+                    ))
+          execGRASS("v.to.db",flags = "quiet",
+                    parameters = list(
+                      map = "intersect_out",
+                      option = "area",
+                      columns = "area"
+                    ))
+          # get the areas per value of the attribute
+          a <- execGRASS("db.select",flags = "c",
+                         parameters = list(
+                           sql = paste0("select a_", attr_name_vect[j],",sum(area) from intersect_out group by a_", attr_name_vect[j])
+                         ), intern = T)
+          
+          a <- do.call(rbind,strsplit(a,split = '\\|'))
+          a <- data.frame(a,  stringsAsFactors = F)
+          a[,2] <- round(as.numeric(a[,2]) / carea, round_dig[j.count])
+          dat[i, a[,1]] <- a[,2]
+        } else { # if this is a point vector
+          dat[i, attr_name_vect[j]] <- as.numeric(unlist(strsplit(
+            execGRASS("v.vect.stats", flags = c("p", "quiet"),
+                    parameters = list(
+                      points = input_vector[j],
+                      areas = vname,
+                      separator = ","
+                    ), intern = T)[2], split = ","))[2])
+          
+        }
+        j.count <- j.count + 1
       }
     }
-    # Remove the mask!
-    execGRASS("r.mask",
-              flags = c("r", "quiet"))
+    ###################################################
+    
 
     # Delete watershed raster
     if (!keep_basins) {
@@ -315,12 +490,18 @@ calc_attributes_sites_exact <- function(sites_map = "sites",
                   type = "raster",
                   name = paste0(sites_map, "_catchm_",locID)
                 ))
+      execGRASS("g.remove",
+                flags = c("quiet", "f"),
+                parameters = list(
+                  type = "vector",
+                  name = paste0(sites_map, "_catchm_",locID, "_v")
+                ), ignore.stderr = TRUE)
     }
     pb$tick()
   }
 
   # Join attributes to sites attribute table
-  message("Joining tables...")
+  message("Joining new attributes to attribute table ...")
   utils::write.csv(dat, file.path(temp_dir,"sites_attributes_exact.csv"),row.names = F)
   write.table(t(gsub("numeric","Real",apply(dat,2,class))),file.path(temp_dir,"sites_attributes_exact.csvt"),quote=T,sep=",",row.names = F,col.names = F)
   execGRASS("db.in.ogr", flags = c("overwrite","quiet"),
@@ -339,4 +520,13 @@ calc_attributes_sites_exact <- function(sites_map = "sites",
             parameters = list(
               table = "sites_attributes_exact"
             ))
+  invisible(file.remove(file.path(temp_dir,"sites_attributes_exact.csv")))
+  invisible(file.remove(file.path(temp_dir,"sites_attributes_exact.csvt")))
+  
+  cnames_sites2 <- execGRASS("db.columns", flags = "quiet",
+                             parameters = list(
+                               table = "sites"
+                             ), intern = T)
+  cnames_sites2 <- cnames_sites2[-(which(cnames_sites2 %in% cnames_sites))]
+  message(paste0("\nNew attributes values are stored as ", paste(cnames_sites2, collapse = ", ")))
 }

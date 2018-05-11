@@ -15,9 +15,9 @@
 #' \donttest{
 #' # Initiate GRASS session
 #' if(.Platform$OS.type == "windows"){
-#'   gisbase = "c:/Program Files/GRASS GIS 7.2.0"
+#'   gisbase = "c:/Program Files/GRASS GIS 7.4.0"
 #'   } else {
-#'   gisbase = "/usr/lib/grass72/"
+#'   gisbase = "/usr/lib/grass74/"
 #'   }
 #' initGRASS(gisBase = gisbase,
 #'     home = tempdir(),
@@ -26,8 +26,10 @@
 #' # Load files into GRASS
 #' dem_path <- system.file("extdata", "nc", "elev_ned_30m.tif", package = "openSTARS")
 #' sites_path <- system.file("extdata", "nc", "sites_nc.shp", package = "openSTARS")
-#' setup_grass_environment(dem = dem_path, sites = sites_path)
-#' import_data(dem = dem_path, sites = sites_path)
+#' preds_path <- c(system.file("extdata", "nc", "landuse.shp", package = "openSTARS"),
+#'                 system.file("extdata", "nc", "pointsources.shp", package = "openSTARS"))
+#' setup_grass_environment(dem = dem_path)
+#' import_data(dem = dem_path, sites = sites_path, predictor_vector = preds_path)
 #' gmeta()
 #'
 #' # Derive streams from DEM
@@ -40,14 +42,33 @@
 #'   correct_compl_junctions()
 #' }
 #' 
+#' # calculate slope as potential predictor 
+#' execGRASS("r.slope.aspect", flags = c("overwrite","quiet"),
+#' parameters = list(
+#'   elevation = "dem",
+#'     slope = "slope"
+#'     ))
+#'     
 #' # Prepare edges
 #' calc_edges()
+#' calc_attributes_edges(input_raster = "slope", stat_rast = "max", attr_name_rast = "maxSlo",
+#'   input_vector = c("landuse", "pointsources"), stat_vect = c("percent", "count"), 
+#'   attr_name_vect = c("landuse", "psource"))
 #'
 #' # Prepare site
 #' calc_sites()
-#' # Calculate H2OArea
-#' calc_attributes_sites_exact()
-#'
+#' 
+#' # Usually, only one of the following methods is needed. The exact one takes
+#' # much longer to run
+#' # approximate potential predictor variables for each site based on edge values
+#' calc_attributes_sites_approx(input_attr_name = c("maxSlo", "agri", "forest", "grass", "urban"), 
+#'   output_attr_name = c("maxSloA", "agriA", "forestA", "grassA", "urbanA"),
+#'   stat = c("max", rep("percent", 4)))
+#' 
+#' # exact potential predictor variables for each site based on catchments
+#' calc_attributes_sites_exact(input_raster = "slope", attr_name_rast = "maxSloEx", stat_rast = "max",
+#'   input_vector = "landuse", attr_name_vect = "landuse", stat_vect = "percent")
+#' 
 #' # Plot data
 #' dem <- readRAST("dem", ignore.stderr = TRUE)
 #' sites <- readVECT("sites", ignore.stderr = TRUE)
@@ -76,10 +97,10 @@
 if(getRversion() >= "2.15.1")
   utils::globalVariables(c(".", "area", "binaryID", "cat_", "cat_large",
                            "cat_small", "cumsum_cells", "cut_x", "cut_y", "dif",
-                           "end_x", "end_y", "len", "Length", "move_stream",
-                           "netID", "newlen","next_str", 
+                           "edge_cat", "end_x", "end_y", "H2OArea", "len", 
+                           "Length", "move_stream", "netID", "newlen","next_str", 
                            "non_null_cells", "OBJECTID", "offset", "pcat", 
-                           "prev_str01", "prev_str02", "prev_str03", "rid", 
+                           "prev_str01", "prev_str02", "prev_str03", "rcaArea","rid", 
                            "stream", "total_area", "variable", "X1", "X2"))
 
 

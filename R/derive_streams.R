@@ -1,27 +1,29 @@
 #' Derive stream network from DEM.
 #'
-#' Streams are derived from a digital elevation model (DEM) using
-#' \href{https://grass.osgeo.org/grass70/manuals/r.stream.extract.html}{r.stream.extract}.
+#' Streams are derived from a digital elevation model (DEM) using the GRASS function
+#' \href{https://grass.osgeo.org/grass74/manuals/r.stream.extract.html}{r.stream.extract}.
 #' If a stream network is available (see \code{\link{import_data}}) and burn > 0
-#' it will be first burnt into the digital elevation model (DEM). Stream
-#' topology is derived using
-#' \href{https://grass.osgeo.org/grass70/manuals/addons/r.stream.order.html}{r.stream.order}.
+#' it will be first burnt into DEM. Stream topology is derived using the GRASS function
+#' \href{https://grass.osgeo.org/grass74/manuals/addons/r.stream.order.html}{r.stream.order}.
 #'
 #' @param burn numeric; how many meters should the streams be burned into the
-#'   DEM?
+#'   DEM? Only applicable if a mapped stream network is provided in \code{\link{import_data}}.
 #' @param accum_threshold integer; accumulation threshold to use (i.e. minimum
-#'   flow accumulation value in cells that will initiate a new stream).
+#'   flow accumulation value in cells that will initiate a new stream). See 
+#'   details below.
 #' @param min_stream_length integer: minimum stream length in number of DEM
-#'   raster cells; shorter first order stream segments are deleted; default: 0
+#'   raster cells; shorter first order stream segments are deleted; default: 0. 
+#'   See details below.
 #' @param condition logical; should the DEM be conditioned using
-#'   \href{https://grass.osgeo.org/grass70/manuals/addons/r.hydrodem.html}{r.hydrodem}?#'
+#'   \href{https://grass.osgeo.org/grass74/manuals/addons/r.hydrodem.html}{r.hydrodem}'
 #' @param dem_name character vector, optional; default: 'dem'; useful if
 #'   conditioned and / or burnt in DEM raster from previous runs shall be used.
 #' @param clean logical; should intermediate raster layer of imported streams
-#'   ('streams_or') be removed from 'GRASS' session?
-#' @param mem logical; should -m flag in GRASS r.watershed be used (as indicated in its help)
-#'   see also \code{\link{watershed_memory}}-function
-#'
+#'   ('streams_or') be removed from the GRASS session?
+#' @param mem logical; should -m flag in the GRASS function 
+#' \href{https://grass.osgeo.org/grass74/manuals/r.watershed.html}{r.watershed} 
+#'  be used (for data preparation)? 
+#'   
 #' @return Nothing. The function produces the following maps:
 #' \itemize{
 #'  \item{'streams_r'} {derived streams (raster)}
@@ -34,11 +36,11 @@
 #'
 #' @details For details on \code{accum_threshold} and \code{min_stream_length}
 #' see the parameters 'threshold' and 'stream_length' at
-#' \href{https://grass.osgeo.org/grass73/manuals/r.stream.extract}{r.stream.extract}.
+#' \href{https://grass.osgeo.org/grass74/manuals/r.stream.extract}{r.stream.extract}.
 #' It might be useful to not burn in the whole available stream network but only 
 #' parts of it (e.g., larger streams with higher Strahler stream order only). 
-#' For this, the stream network needs to be pre-processed before loading it with 
-#' \code{import_data}.
+#' For this, the stream network needs to be pre-processed (parts could be deleted)
+#' before loading it with \code{import_data}.
 #'
 #' @note \code{\link{setup_grass_environment}} and \code{\link{import_data}}
 #'   must be run before.
@@ -50,9 +52,9 @@
 #' \donttest{
 #' # Initiate GRASS session
 #' if(.Platform$OS.type == "windows"){
-#'   gisbase = "c:/Program Files/GRASS GIS 7.2.0"
+#'   gisbase = "c:/Program Files/GRASS GIS 7.4.0"
 #'   } else {
-#'   gisbase = "/usr/lib/grass72/"
+#'   gisbase = "/usr/lib/grass74/"
 #'   }
 #' initGRASS(gisBase = gisbase,
 #'     home = tempdir(),
@@ -61,7 +63,7 @@
 #' # Load files into GRASS
 #' dem_path <- system.file("extdata", "nc", "elev_ned_30m.tif", package = "openSTARS")
 #' sites_path <- system.file("extdata", "nc", "sites_nc.shp", package = "openSTARS")
-#' setup_grass_environment(dem = dem_path, sites = sites_path)
+#' setup_grass_environment(dem = dem_path)
 #' import_data(dem = dem_path, sites = sites_path)
 #' gmeta()
 #'
@@ -105,7 +107,7 @@ derive_streams <- function(burn = 5, accum_threshold = 700, condition = TRUE,
 
 
   if (condition) {
-    message("Conditioning DEM...\n")
+    message("Conditioning DEM ...")
     # MiKatt: Make 'mod' and 'size' user defined (optionally)?
     execGRASS("r.hydrodem",
               flags = c("overwrite"),
@@ -117,7 +119,7 @@ derive_streams <- function(burn = 5, accum_threshold = 700, condition = TRUE,
     dem_name_out <- "dem_cond"
   }
   if ("streams_o" %in% vect & burn > 0) {
-    message("Burning streams into DEM...\n")
+    message("Burning streams into DEM ...")
     # rasterize streams, set value to 1
     execGRASS("v.to.rast",
               flags = c("overwrite", "quiet"),
@@ -198,7 +200,7 @@ derive_streams <- function(burn = 5, accum_threshold = 700, condition = TRUE,
   # MiKatt: BUT -> produces many very small segments, often close to intersections
   # MiKatt: -> seems to be independent of the convercence value
   # MiKatt: -> r.thin does not help much
-  message("Deriving streams from DEM...\n")
+  message("Deriving streams from DEM ...")
   # MiKatt: Known Windows issue ([GRASS-dev] [GRASS GIS] #2919): "Missing value for parameter <d8cut>"; default value infinity is not used even if accumulation map is given.
   # MiKatt: Solution: set d8cut to total number of cells in g.region.
     ncell <- execGRASS("g.region",flags="p",intern=T)
@@ -214,7 +216,7 @@ derive_streams <- function(burn = 5, accum_threshold = 700, condition = TRUE,
                               direction = "dirs"))
 
     # calculate stream topology ----------
-    message("Calculating stream topology...\n")
+    message("Calculating stream topology ...")
     # MiKatt: Is accumulation needed here? r.stream.order: "This map is an option only if Horton's or Hack's ordering is performed."
     # MiKatt: Yes, does not work without.
     execGRASS("r.stream.order",
@@ -253,6 +255,8 @@ derive_streams <- function(burn = 5, accum_threshold = 700, condition = TRUE,
 #' See GRASS function \href{https://grass.osgeo.org/grass73/manuals/r.watershed.html}{r.watershed}.
 #' 
 #' @param dem character; path to DEM raster file.
+#' 
+#' @keywords internal
 #' 
 #' @return MB of RAM needed to derive the stream network with \code{mem = F} in 
 #' \code{\link{derive_streams}}.

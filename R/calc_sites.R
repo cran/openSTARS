@@ -13,13 +13,15 @@
 #' that distinguishes between repeated measurements at a sampling site, e.g. by 
 #' date. If not provided, it is created automatically.
 #'@param pred_sites character vector (optional); names for prediction sites 
-#'(created with \code{import_data}).
+#'(loaded with \code{import_data}).
 #'
 #'@details Steps include:
 #'\itemize{
-#'\item{Snap points to derived network. 'dist'
-#'gives the distance of the original position to the closest streams segment.}
-#'\item{Assign unique 'pid' and 'locID'.}
+#'\item{Snap points to derived network (edges). 'dist'
+#'gives the distance of the original position to the closest streams segment. 
+#'If this is a too large value consider running \code{\link{derive_streams}} again with
+#'smaller value for \code{accum_threshold} and/or \code{min_stream_length}.}
+#'\item{Assign unique 'pid' and 'locID' (needed by the 'SSN' package).}
 #'\item{Get 'rid' and 'netID' of the
 #'stream segment the site intersects with (from map "edges").}
 #'\item{Calculate upstream distance for each point ('upDist').}
@@ -29,8 +31,8 @@
 #'Often, survey sites do not lay exactly on the stream network (due to GPS imprecision,
 #'stream representation as lines, derivation of streams from dem, etc.). To
 #'assign an exact position of the sites on the network they are moved to the
-#'closest stream segment (snapped) using
-#'\href{https://grass.osgeo.org/grass73/manuals/v.distance.html}{v.distance}.
+#'closest stream segment (snapped) using the GRASS function
+#'\href{https://grass.osgeo.org/grass74/manuals/v.distance.html}{v.distance}.
 #'
 #' If \code{locid_col} and \code{pid_col} are not provided, 'pid' and 'locID' 
 #' are identical, unique numbers. If they are provided, they are created based
@@ -60,9 +62,9 @@
 #' \donttest{
 #' # Initiate GRASS session
 #' if(.Platform$OS.type == "windows"){
-#'   gisbase = "c:/Program Files/GRASS GIS 7.2.0"
+#'   gisbase = "c:/Program Files/GRASS GIS 7.4.0"
 #'   } else {
-#'   gisbase = "/usr/lib/grass72/"
+#'   gisbase = "/usr/lib/grass74/"
 #'   }
 #' initGRASS(gisBase = gisbase,
 #'     home = tempdir(),
@@ -71,35 +73,37 @@
 #' # Load files into GRASS
 #' dem_path <- system.file("extdata", "nc", "elev_ned_30m.tif", package = "openSTARS")
 #' sites_path <- system.file("extdata", "nc", "sites_nc.shp", package = "openSTARS")
-#' setup_grass_environment(dem = dem_path, sites = sites_path)
+#' setup_grass_environment(dem = dem_path)
 #' import_data(dem = dem_path, sites = sites_path)
 #' gmeta()
 #'
 #' # Derive streams from DEM
 #' derive_streams(burn = 0, accum_threshold = 700, condition = TRUE, clean = TRUE)
-#'
-#' # Check and correct complex junctions (there are no complex juctions in this 
+#' 
+#' # Check and correct complex junctions (there are no complex juctions in this
 #' # example date set)
 #' cj <- check_compl_junctions()
 #' if(cj){
 #'   correct_compl_junctions()
 #' }
-#' 
+#'
 #' # Prepare edges
 #' calc_edges()
 #'
 #' # Prepare site
 #' calc_sites()
-#'
 #' # Plot data
 #' dem <- readRAST('dem', ignore.stderr = TRUE)
 #' edges <- readVECT('edges', ignore.stderr = TRUE)
 #' sites <- readVECT('sites', ignore.stderr = TRUE)
-#' plot(dem, col = terrain.colors(20))
+#' sites_o <- readVECT('sites_o', ignore.stderr = TRUE)
+#' plot(dem, col = terrain.colors(20),axes = TRUE)
 #' lines(edges, col = 'blue')
 #' points(sites, pch = 4)
-#'  }
-#' 
+#' points(sites_o, pch = 1)
+#' legend("topright", pch = c(1, 4), legend = c("original", "corrected"))
+#'}
+
 
 calc_sites <- function(locid_col = NULL, pid_col = NULL, pred_sites = NULL) {
   vect <- execGRASS("g.list",
@@ -153,9 +157,9 @@ prepare_sites <- function(sites_map, locid_c = NULL, pid_c = NULL){
             parameters = list(
               vector = paste0(paste0(sites_map,"_o"), ",",sites_map)))
   
-  message(paste0("Preparing sites '", sites_map, "' ...\n"))
+  message(paste0("Preparing sites '", sites_map, "' ..."))
   # Snap sites to streams --------
-  message("Snapping sites to streams...\n")
+  message("Snapping sites to streams ...")
   # add 4 columns holding: stream, distance and coordinates of nearest streams
   execGRASS("v.db.addcolumn",
             parameters = list(
@@ -191,7 +195,7 @@ prepare_sites <- function(sites_map, locid_c = NULL, pid_c = NULL){
   #         otherwise assign seperatelly
   # MiKatt: Also keep user defined site IDs / site names
   # Here && in if clause to first check is.null
-  message("Setting pid and locID...\n")
+  message("Setting pid and locID ...")
   if(!is.null(locid_c) && locid_c %in% colnames(sites@data) ){
     sites@data$locID <- as.numeric(as.factor(sites@data[,locid_c]))
   } else {  
@@ -203,13 +207,14 @@ prepare_sites <- function(sites_map, locid_c = NULL, pid_c = NULL){
     sites@data$pid <- sites@data$locID
   }
   
+  # 20180219: override projection check
   writeVECT(sites, vname = sites_map,
-            v.in.ogr_flags = c("overwrite", "quiet"),
+            v.in.ogr_flags = c("overwrite", "quiet", "o"),
             ignore.stderr = TRUE)
   rm(sites)
   
   # Set netID and rid from network ---------
-  message("Assigning netID and rid...\n")
+  message("Assigning netID and rid ...")
   
   # MiKatt: This seems to be faster
   execGRASS("v.db.addcolumn",
@@ -227,7 +232,7 @@ prepare_sites <- function(sites_map, locid_c = NULL, pid_c = NULL){
   
   # Calculate upDist ---------
   # MiKatt: Distance of every raster cell from the outlet
-  message("Calculating upDist...\n")
+  message("Calculating upDist ...")
   ## MiKatt was not exact enough, results in identical upDist if two points lay
   ##        in the same raster cell
   # execGRASS("r.stream.distance",

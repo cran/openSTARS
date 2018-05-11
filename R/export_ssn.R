@@ -27,9 +27,9 @@
 #' \donttest{
 #' # Initiate GRASS session
 #' if(.Platform$OS.type == "windows"){
-#'   gisbase = "c:/Program Files/GRASS GIS 7.2.0"
+#'   gisbase = "c:/Program Files/GRASS GIS 7.4.0"
 #'   } else {
-#'   gisbase = "/usr/lib/grass72/"
+#'   gisbase = "/usr/lib/grass74/"
 #'   }
 #' initGRASS(gisBase = gisbase,
 #'     home = tempdir(),
@@ -38,7 +38,7 @@
 #' # Load files into GRASS
 #' dem_path <- system.file("extdata", "nc", "elev_ned_30m.tif", package = "openSTARS")
 #' sites_path <- system.file("extdata", "nc", "sites_nc.shp", package = "openSTARS")
-#' setup_grass_environment(dem = dem_path, sites = sites_path)
+#' setup_grass_environment(dem = dem_path)
 #' import_data(dem = dem_path, sites = sites_path)
 #' gmeta()
 #'
@@ -107,12 +107,14 @@ export_ssn <- function(path, predictions = NULL, delete_directory = FALSE){
               map = "edges2",
               columns = "stream,next_str,prev_str01,prev_str02"
             ))
+  # 20180219: ESRI_Shapefile is no longer the default format
   execGRASS("v.out.ogr",
             flags = c("overwrite", "quiet"),
             parameters = list(
               input = "edges2",
               type = "line",
               output = path,
+              format = "ESRI_Shapefile",
               output_layer = "edges"
             ))
   execGRASS("g.remove",
@@ -129,6 +131,7 @@ export_ssn <- function(path, predictions = NULL, delete_directory = FALSE){
               input = "sites",
               type = "point",
               output = path,
+              format = "ESRI_Shapefile",
               output_layer = "sites"
             ))
 
@@ -141,6 +144,7 @@ export_ssn <- function(path, predictions = NULL, delete_directory = FALSE){
                   input = predictions[i],
                   type = "point",
                   output = path,
+                  format = "ESRI_Shapefile",
                   output_layer = predictions[i]
                 ))
   }

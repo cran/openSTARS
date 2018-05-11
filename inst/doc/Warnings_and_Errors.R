@@ -1,3 +1,16 @@
+## ----echo=FALSE----------------------------------------------------------
+knitr::opts_chunk$set(
+  eval = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  collapse = TRUE,
+  comment = "#>"
+)
+
+## ----install_gh, eval=FALSE----------------------------------------------
+#  # install.packages("devtools")
+#  devtools::install_github("MiKatt/openSTARS")
+
 ## ----windows settings, eval = FALSE--------------------------------------
 #    # GRASS in QGIS installation
 #    #set Path; must be done BEFORE initGRASS

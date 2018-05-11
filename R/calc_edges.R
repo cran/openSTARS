@@ -10,12 +10,12 @@
 #' upstream node of the stream segment to the outlet of the network}
 #'\item{Calculate reach contributing areas (RCA ) per segment,
 #''rcaArea' = subcatchment area of each segment in square km}
-#'\item{Calculate catchment areas; 'H2OArea' = total catchment area of each
+#'\item{Calculate catchment areas, 'H2OArea' = total catchment area of each
 #'segment in square km} }
-#'All lengths are rounded to 2 and all areas to 4 decimal places, respectively.
+#'All lengths are rounded to 2 and all areas to 6 decimal places, respectively.
 #'
 #'@return Nothing. The function produces the following map: \itemize{
-#'  \item{'edges'} {derived stream segments with computed attributes needed for
+#'  \item{'edges':} {derived stream segments with computed attributes needed for
 #'  'SSN' (vector)} }
 #'
 #'@note \code{\link{setup_grass_environment}}, \code{\link{import_data}} and
@@ -29,9 +29,9 @@
 #' \donttest{
 #' # Initiate GRASS session
 #' if(.Platform$OS.type == "windows"){
-#'   gisbase = "c:/Program Files/GRASS GIS 7.2.0"
+#'   gisbase = "c:/Program Files/GRASS GIS 7.4.0"
 #'   } else {
-#'   gisbase = "/usr/lib/grass72/"
+#'   gisbase = "/usr/lib/grass74/"
 #'   }
 #' initGRASS(gisBase = gisbase,
 #'     home = tempdir(),
@@ -40,7 +40,7 @@
 #' # Load files into GRASS
 #' dem_path <- system.file("extdata", "nc", "elev_ned_30m.tif", package = "openSTARS")
 #' sites_path <- system.file("extdata", "nc", "sites_nc.shp", package = "openSTARS")
-#' setup_grass_environment(dem = dem_path, sites = sites_path)
+#' setup_grass_environment(dem = dem_path)
 #' import_data(dem = dem_path, sites = sites_path)
 #' gmeta()
 #'
@@ -95,7 +95,7 @@ calc_edges <- function() {
               cats = nocat), ignore.stderr = T)
 
   # calculate basins for streams segments --------
-  message("Calculating reach contributing area (RCA)...\n")
+  message("Calculating reach contributing area (RCA) ...")
   # MiKatt: Could this be done in one step in r.watershed when accumulation map is computed in derive_streams.R?
   # MiKatt: Check if that would be faster: results in approx. two time more basins due to tiny stream snipplets from r.watershed --> keep it as it is.
   execGRASS("r.stream.basins",
@@ -104,7 +104,7 @@ calc_edges <- function() {
                               stream_rast = "streams_r",
                               basins = "rca"))
 
-  message("Calculating upstream catchment areas... \n")
+  message("Calculating upstream catchment areas ...")
   # Calculate reach contributing area for each stream segment (=edges.drain_area) --------
   #! Works, but slow
   #! This is used to calculate PI via SSN
@@ -134,7 +134,7 @@ calc_edges <- function() {
   dt.streams[, names(dt.streams) := lapply(.SD, as.numeric)]
   dt.streams<-merge(dt.streams, areas, by="cat", all = T)  # MiKatt: must be 'cat' not 'stream' because stream_r is based on 'cat'!
   setkey(dt.streams, stream)
-  # set catchment area of short segments that do not have a rac (NA) to zero (mainly resulting form correct_compl_junctions())
+  # set catchment area of short segments that do not have a rca (NA) to zero (mainly resulting form correct_compl_junctions())
   dt.streams[is.na(area), area := 0 ]
 
   # MiKatt: Segments without a next segment (= -1) are outlets of catchments
@@ -147,8 +147,8 @@ calc_edges <- function() {
   }
 
   # MiKatt: area is in m² -> convert to km²
-  dt.streams[, area := round(area / 1000000, 4)]
-  dt.streams[, total_area := round(total_area / 1000000, 4)]
+  dt.streams[, area := round(area / 1000000, 6)]
+  dt.streams[, total_area := round(total_area / 1000000, 6)]
   dt.streams[, rid := seq_len(nrow(dt.streams)) - 1]
   dt.streams[, OBJECTID := stream]
   dt.streams[,  ":=" (cat = NULL, next_str = NULL, prev_str01 = NULL, prev_str02 = NULL)]
@@ -271,9 +271,8 @@ calcCatchmArea_assignNetID <- function(dt, id, net_ID){
 #' 
 #' @param dt data.table containing the attributes of the stream segments
 #' @param str_id integer giving the stream_id ('stream') of the starting edge
-#' 
+#' @keywords internal 
 #' @return vector of cat values of all upstream edges and the calling one.
-#' 
 #' @author Mira Kattwinkel, \email{mira.kattwinkel@@gmx.net}
 #' 
 get_cats_edges_in_catchment<-function(dt, str_id){

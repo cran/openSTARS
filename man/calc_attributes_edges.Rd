@@ -4,45 +4,71 @@
 \alias{calc_attributes_edges}
 \title{Calculate attributes of the edges.}
 \usage{
-calc_attributes_edges(input_raster, stat, attr_name, round_dig = 2,
-  clean = TRUE)
+calc_attributes_edges(input_raster = NULL, stat_rast = NULL,
+  attr_name_rast = NULL, input_vector = NULL, stat_vect = NULL,
+  attr_name_vect = NULL, round_dig = 2)
 }
 \arguments{
-\item{input_raster}{name or character vector of names of the raster map(s)
-to calculate attributes from.}
+\item{input_raster}{name(s) of raster map(s) to calculate attributes from.}
 
-\item{stat}{name or character vector giving the statistics to be calculated,
-must be one of: min, max, mean, percent.}
+\item{stat_rast}{name(s) giving the statistics to be calculated,
+from the raster maps, must be one of: "min", "max", "mean", "sum", "percent".}
 
-\item{attr_name}{name or character vector of column names for the attribute(s)
+\item{attr_name_rast}{name(s) of new column names for the attribute(s)
 to be calculated. Attribute names must not be longer than 8 characters.}
 
-\item{round_dig}{integer; number of digits to round results to. Can be a vector
-of different values or just one value for all attributes.}
+\item{input_vector}{name(s) of vector map(s) to calculate attributes from.}
 
-\item{clean}{logical; should intermediate files be deleted}
+\item{stat_vect}{name(s) giving the statistics to be calculated
+from the vector maps, must be one of: "count" (for point data), "percent"
+(for polygon data).}
+
+\item{attr_name_vect}{name(s) of attribute column(s) to calculate the 
+statistics from. For point data, results columns will have the same name, for
+polygon data, the results column names are determined by the content of 
+this column.}
+
+\item{round_dig}{integer; number of digits to round results to. Can be a vector
+  of different values or just one value for all attributes.
+#@param clean logical; should intermediate files be deleted}
 }
 \value{
 Nothing. The function appends new columns to the 'edges' attribute
-  table with column names given in \code{attr_name}. For each attribute, two
+  table with column names given in \code{attr_name_rast}. For each attribute, two
   columns are appended: one giving the attribute for the rca of the edge
   ("attribute_name_e") and one for the attribute of the total catchment of
   the edge ("attribute_name_c").
 }
 \description{
-For each edge (i.e. stream segment) additional attributes (predictor variables)
-are derived based on given raster maps.
+For each edge (i.e. stream segment) additional attributes (potential predictor 
+variables) are derived based on given raster or vector maps.
 }
 \details{
 First, the subcatchments for all edges are calculated. Then these are
-intersected with the given raster maps and the desired statistics are computed.
-This is needed to compute approximate attribute values for sites \code{\link{calc_attributes_sites_approx}}.
+intersected with the given raster and/or vector maps and the desired statistics are computed.
+This function must be run before computing approximate attribute values for 
+sites \code{\link{calc_attributes_sites_approx}}.
 
-For \code{stat} = "percent" the \code{input_raster} must be coded as 1 and 0
+For \code{stat_rast} = "percent" the \code{input_raster} must be coded as 1 and 0
  (e.g., cells occupied by the land use under consideration and not). If
   the \code{input_raster} consists of percentages per cell (e.g., proportional land
-  use of a certain type per cell) \code{stat} = "mean" gives the overall proportion
-  of this land use.
+  use of a certain type per cell) \code{stat_rast} = "mean" gives the overall proportion
+  of this land use in the catchment.
+
+For \code{stat_vect} = "percent" \code{input_vector} must contain polygons of
+e.g. different land use types. The column \code{attr_name_vect} would then 
+give the code for the different land uses. Then, the percentage for each land
+use type in the catchment of the edge is calculated and given in separate columns
+with column names resampling the different categories given in column 
+\code{attr_name_vect}
+
+For \code{stat_vect} = "count" \code{input_vector} must contain points of
+e.g. waste water treatment plants. The column \code{attr_name_vect} gives the 
+name of the column to hold the count value, e.g. nWWTP. 
+
+Both raster and vector maps to be used must be read in to the GRASS session, 
+either in \code{\link{import_data}} or using the GRASS function r.in.rast or
+v.in.ogr (see examples).
 }
 \note{
 \code{\link{setup_grass_environment}}, \code{\link{import_data}},
@@ -52,9 +78,9 @@ For \code{stat} = "percent" the \code{input_raster} must be coded as 1 and 0
 \donttest{
 # Initiate GRASS session
 if(.Platform$OS.type == "windows"){
-  gisbase = "c:/Program Files/GRASS GIS 7.2.0"
+  gisbase = "c:/Program Files/GRASS GIS 7.4.0"
   } else {
-  gisbase = "/usr/lib/grass72/"
+  gisbase = "/usr/lib/grass74/"
   }
 initGRASS(gisBase = gisbase,
     home = tempdir(),
@@ -63,8 +89,10 @@ initGRASS(gisBase = gisbase,
 # Load files into GRASS
 dem_path <- system.file("extdata", "nc", "elev_ned_30m.tif", package = "openSTARS")
 sites_path <- system.file("extdata", "nc", "sites_nc.shp", package = "openSTARS")
-setup_grass_environment(dem = dem_path, sites = sites_path)
-import_data(dem = dem_path, sites = sites_path)
+pred_path <- system.file("extdata", "nc", "landuse.shp", package = "openSTARS")
+setup_grass_environment(dem = dem_path)
+import_data(dem = dem_path, sites = sites_path, 
+  predictor_vector = pred_path, predictor_v_names = "landuse")
 gmeta()
 
 # Derive streams from DEM
@@ -80,11 +108,43 @@ if(cj){
 # Prepare edges
 calc_edges()
 
-# Plot data
+# Derive slope from the DEM as an example raster map to calculate attributes from
+execGRASS("r.slope.aspect", flags = c("overwrite","quiet"),
+parameters = list(
+  elevation = "dem",
+    slope = "slope"
+    ))
+    
+# import additional vector data
+fp <-  system.file("extdata", "nc", "pointsources.shp", package = "openSTARS")
+execGRASS("v.import", flags = c("overwrite", "quiet"),
+parameters = list(
+  input = fp,
+  output =  "psources",
+  extent = "region"),  # to import into current regien
+  intern = TRUE, ignore.stderr = TRUE)
+  
+calc_attributes_edges(input_raster = "slope", stat_rast = "max", attr_name_rast = "maxSlo",
+                     input_vector = c("landuse", "psources"), 
+                     stat_vect = c("percent", "count"), attr_name_vect = c("landuse", "nps"))
+
+# Plot data with maximum slope per edge as color ramp (steep slopes in red)
 dem <- readRAST('dem', ignore.stderr = TRUE)
 edges <- readVECT('edges', ignore.stderr = TRUE)
-plot(dem, col = terrain.colors(20))
-lines(edges, col = "blue", lwd = 2)
+head(edges@data)
+lu <- readVECT("landuse", ignore.stderr = TRUE)
+plot(dem, col = gray(seq(0,1,length.out=20))) 
+col <- adjustcolor(c("red", "green", "blue", "yellow"), alpha.f = 0.3)
+plot(lu, add = TRUE, col = col[as.numeric(as.factor(lu$landuse))])
+legend("topleft", col = col, pch = 15, legend = as.factor(sort(unique(lu$landuse))), 
+  title = "landuse", ncol = 4)
+mm <- range(c(edges$agri_c), na.rm = TRUE) 
+b <- seq(from=mm[1],to=mm[2]+diff(mm)*0.01,length.out=10)
+c_ramp <- colorRampPalette(c("blue", "red"))
+cols <- c_ramp(length(b))[as.numeric(cut(edges$agri_c,breaks = b,right= FALSE))]
+plot(edges, col = cols, add = TRUE, lwd = 2)
+legend("topright", col = cols[c(1,length(cols))], lwd = 2, 
+  legend = paste("precent agri", c(min(edges$agri_c), max(edges$agri_c))))
 }
 
 }

@@ -8,7 +8,7 @@ calc_edges()
 }
 \value{
 Nothing. The function produces the following map: \itemize{
- \item{'edges'} {derived stream segments with computed attributes needed for
+ \item{'edges':} {derived stream segments with computed attributes needed for
  'SSN' (vector)} }
 }
 \description{
@@ -23,9 +23,9 @@ Steps include:
 upstream node of the stream segment to the outlet of the network}
 \item{Calculate reach contributing areas (RCA ) per segment,
 'rcaArea' = subcatchment area of each segment in square km}
-\item{Calculate catchment areas; 'H2OArea' = total catchment area of each
+\item{Calculate catchment areas, 'H2OArea' = total catchment area of each
 segment in square km} }
-All lengths are rounded to 2 and all areas to 4 decimal places, respectively.
+All lengths are rounded to 2 and all areas to 6 decimal places, respectively.
 }
 \note{
 \code{\link{setup_grass_environment}}, \code{\link{import_data}} and
@@ -35,9 +35,9 @@ All lengths are rounded to 2 and all areas to 4 decimal places, respectively.
 \donttest{
 # Initiate GRASS session
 if(.Platform$OS.type == "windows"){
-  gisbase = "c:/Program Files/GRASS GIS 7.2.0"
+  gisbase = "c:/Program Files/GRASS GIS 7.4.0"
   } else {
-  gisbase = "/usr/lib/grass72/"
+  gisbase = "/usr/lib/grass74/"
   }
 initGRASS(gisBase = gisbase,
     home = tempdir(),
@@ -46,7 +46,7 @@ initGRASS(gisBase = gisbase,
 # Load files into GRASS
 dem_path <- system.file("extdata", "nc", "elev_ned_30m.tif", package = "openSTARS")
 sites_path <- system.file("extdata", "nc", "sites_nc.shp", package = "openSTARS")
-setup_grass_environment(dem = dem_path, sites = sites_path)
+setup_grass_environment(dem = dem_path)
 import_data(dem = dem_path, sites = sites_path)
 gmeta()
 

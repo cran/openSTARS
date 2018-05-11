@@ -5,8 +5,9 @@
 \title{Calculate attributes of the sites.}
 \usage{
 calc_attributes_sites_exact(sites_map = "sites", input_raster = NULL,
-  stat = NULL, attr_name = NULL, round_dig = 2, calc_basin_area = TRUE,
-  keep_basins = FALSE)
+  stat_rast = NULL, attr_name_rast = NULL, input_vector = NULL,
+  stat_vect = NULL, attr_name_vect = NULL, round_dig = 2,
+  calc_basin_area = TRUE, keep_basins = FALSE)
 }
 \arguments{
 \item{sites_map}{character; name of the sites (observation or prediction) 
@@ -15,20 +16,32 @@ attributes shall be calculated for. "sites" (default) refers to the observation 
 \item{input_raster}{character vector (optional); name of additional raster
 maps to calculate attributes from.}
 
-\item{stat}{character vector (optional); statistics to be calculated, one of:
+\item{stat_rast}{character vector (optional); statistics to be calculated, one of:
 min, max, mean, stddev, variance, sum, median or percentile_X (where X
 gives the desired percentile e.g. 25 for the first). Must be provided if 
 \code{input_raster} are given.}
 
-\item{attr_name}{character vector (optional); column name for the attributes
+\item{attr_name_rast}{character vector (optional); column name for the attributes
 to be calculated. Attribute names must not be longer than 10 characters.
 Must be provided if \code{input_raster} are given.}
+
+\item{input_vector}{character string vector (optional); name of additional vector
+maps to calculate attributes from.}
+
+\item{stat_vect}{character string vector (optional); statistics to be calculated, 
+one of: percentage or count. Must be provided if \code{input_vector} is given.}
+
+\item{attr_name_vect}{character string vector (optional); column name(s) in 
+the vector file provided to calculate the attributes from (if \code{input_vector}
+is a polygon map and stat_vect is 'percent') or giving the new name attributes
+to calculate (if \code{input_vector} is a point map and stat_vect is 'count'.
+Must be provided if \code{input_vector} is given.}
 
 \item{round_dig}{integer; number of digits to round results to. Can be a vector
 of different values or just one value for all attributes.}
 
 \item{calc_basin_area}{boolean; shall the catchment area be calculated? (Useful
-if the function has been called before with \code{keep_basins = TRUE}.)}
+to set to FALSE if the function has been called before with \code{keep_basins = TRUE}.)}
 
 \item{keep_basins}{boolean; shall raster maps of all the watersheds be kept?}
 }
@@ -36,18 +49,18 @@ if the function has been called before with \code{keep_basins = TRUE}.)}
 Nothing. The function appends new columns to the \code{sites_map} attribute table
 \itemize{
  \item{'H2OArea':} {Total watershed area of the watershed upstream of each site.}
- \item{attr_name:} {Additional optional attributes calculated based on input_raster maps.}
+ \item{attr_name_rast:} {Additional optional attributes calculated based on input_raster maps.}
 }
-Please note that for sampling points that lie in the same dem raster cell 
- along a stream identical values are calculated, because identical watersheds
+Please note that for sampling points that lie in the same DEM raster cell 
+ along a stream identical values are calculated because identical watersheds
  are derived.
 }
 \description{
 For each site (observation or prediction) the total catchment area is
 calculated ('H2OArea'). Additionally, other attributes (predictor variables)
-can be derived based on given raster maps. This function calculates
+can be derived based on given raster or vector maps. This function calculates
 exact values for catchments derived with
-\href{https://grass.osgeo.org/grass70/manuals/addons/r.stream.basins.html}{r.stream.basins}
+\href{https://grass.osgeo.org/grass74/manuals/addons/r.stream.basins.html}{r.stream.basins}
 and can take considerable time if there are many sites.
 Catchment raster maps can optionally be stored as "sitename_catchm_X" (X = locID).
 }
@@ -63,18 +76,18 @@ with x = locID of all sites the catchments (and their area) are derived.
 \donttest{
 # Initiate GRASS session
 if(.Platform$OS.type == "windows"){
-  gisbase = "c:/Program Files/GRASS GIS 7.2.0"
-  } else {
-  gisbase = "/usr/lib/grass72/"
-  }
+  gisbase = "c:/Program Files/GRASS GIS 7.4.0"
+} else {
+  gisbase = "/usr/lib/grass74/"
+}
 initGRASS(gisBase = gisbase,
-    home = tempdir(),
-    override = TRUE)
+     home = tempdir(),
+     override = TRUE)
 
 # Load files into GRASS
 dem_path <- system.file("extdata", "nc", "elev_ned_30m.tif", package = "openSTARS")
 sites_path <- system.file("extdata", "nc", "sites_nc.shp", package = "openSTARS")
-setup_grass_environment(dem = dem_path, sites = sites_path)
+setup_grass_environment(dem = dem_path)
 import_data(dem = dem_path, sites = sites_path)
 gmeta()
 
@@ -84,32 +97,32 @@ derive_streams(burn = 0, accum_threshold = 700, condition = TRUE, clean = TRUE)
 # Prepare edges
 calc_edges()
 execGRASS("r.slope.aspect", flags = c("overwrite","quiet"),
-parameters = list(
-  elevation = "dem",
-  slope = "slope"
-  ))
-calc_attributes_edges(input_raster = "slope", stat = "max", attr_name = "maxSlo")
+          parameters = list(
+            elevation = "dem",
+            slope = "slope"
+          ))
+calc_attributes_edges(input_raster = "slope", stat_rast = "max", attr_name_rast = "maxSlo")
 
 # Prepare sites
 calc_sites()
-calc_attributes_sites_approx(input_attr_name = "maxSlo", stat = "max")
-calc_attributes_sites_exact(input_raster = "slope", attr_name = "maxSloE", stat = "max")
+calc_attributes_sites_approx(input_attr_name = "maxSlo", output_attr_name = "maxSloA", stat = "max")
+calc_attributes_sites_exact(input_raster = "slope", attr_name_rast = "maxSloE", stat_rast = "max")
 
 # Plot data
 dem <- readRAST('dem', ignore.stderr = TRUE)
 edges <- readVECT('edges', ignore.stderr = TRUE)
 sites <- readVECT('sites', ignore.stderr = TRUE)
-plot(dem, col = terrain.colors(20))
-mm <- range(c(edges$maxSlo_e, sites$maxSlo, sites$maxSloE))
+plot(dem, col = gray(seq(0,1,length.out=20)))
+mm <- range(c(edges$maxSlo_e, sites$maxSloA, sites$maxSloE))
 b <- seq(from = mm[1], to = mm[2] + diff(mm) * 0.01, length.out = 10)
-c_ramp <- colorRampPalette(c("blue", "red"))
+c_ramp <- colorRampPalette(c("white", "blue", "orange", "red"))
 cols <- c_ramp(length(b))[as.numeric(cut(edges$maxSlo_e, breaks = b, right = FALSE))]
-lines(edges,col = cols, lwd = 2)
-cols <- c_ramp(length(b))[as.numeric(cut(sites$maxSlo,breaks = b,right = FALSE))]
-points(sites, pch = 19, col = cols)
+plot(edges,col = cols, lwd = 2, add = TRUE)
+cols <- c_ramp(length(b))[as.numeric(cut(sites$maxSloA,breaks = b,right = FALSE))]
+plot(sites, pch = 19, col = cols, cex = 2, add = TRUE)
 cols <- c_ramp(length(b))[as.numeric(cut(sites$maxSloE,breaks = b,right = FALSE))]
-points(sites, pch = 21, bg = cols, cex = 0.7)
-# Some points in the centre of the map indicate a difference in max slope between
+plot(sites, pch = 21, bg = cols, cex = 1.1, add = TRUE)
+# Some points in the lower centre of the map indicate a difference in max slope between
 # approximate and exact calculation (different colors for inner and outer points)
 }
 }

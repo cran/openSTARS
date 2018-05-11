@@ -18,9 +18,9 @@
 #' \donttest{
 #' # Initiate GRASS session
 #' if(.Platform$OS.type == "windows"){
-#'   gisbase = "c:/Program Files/GRASS GIS 7.2.0"
+#'   gisbase = "c:/Program Files/GRASS GIS 7.4.0"
 #'   } else {
-#'   gisbase = "/usr/lib/grass72/"
+#'   gisbase = "/usr/lib/grass74/"
 #'   }
 #' initGRASS(gisBase = gisbase,
 #'     home = tempdir(),
@@ -29,7 +29,7 @@
 #' # Load files into GRASS
 #' dem_path <- system.file("extdata", "nc", "elev_ned_30m.tif", package = "openSTARS")
 #' sites_path <- system.file("extdata", "nc", "sites_nc.shp", package = "openSTARS")
-#' setup_grass_environment(dem = dem_path, sites = sites_path)
+#' setup_grass_environment(dem = dem_path)
 #' import_data(dem = dem_path, sites = sites_path)
 #' gmeta()
 #'
@@ -37,7 +37,7 @@
 #' derive_streams(burn = 0, accum_threshold = 700, condition = TRUE, clean = TRUE)
 #'
 #' # Check and correct complex junctions (there are no complex juctions in this 
-#' # example date set)
+#' # example date set if the accum_threshold is high)
 #' cj <- check_compl_junctions()
 #' if(cj){
 #'   correct_compl_junctions()
@@ -135,12 +135,12 @@ check_ssn <- function(path, predictions = NULL) {
     message("\tMax rid...FAIL!")
   }
   
-  if (all(edges$upDist > 0)) {
-    message("\tupDist > 0...OK")
-  } else {
-    out <- out & FALSE
-    message("\tupDist > 0...FAIL!")
-  }
+  # if (all(edges$upDist > 0)) {
+  #   message("\tupDist > 0...OK")
+  # } else {
+  #   out <- out & FALSE
+  #   message("\tupDist > 0...FAIL!")
+  # }
   
   if (!any(is.na(edges$netID))) {
     message("\tnetID...OK")
@@ -164,8 +164,9 @@ check_ssn <- function(path, predictions = NULL) {
   # Obs. sites -------------------------------------------------------------------
   message("Checking sites.shp...")
   sites <- readOGR(path, "sites", verbose = FALSE)
-  obl_cols <- c("rid", "pid", "locID", "netID", "upDist", "H2OArea")
-  if (all(obl_cols %in% names(sites@data))) {
+  obl_cols <- c("rid", "pid", "locID", "netID", "upDist")
+  obl_cols2 <- "H2OArea"
+  if (all(obl_cols %in% names(sites@data)) & any(grepl(obl_cols2, names(sites@data)))) {
     message("\tColumns...OK")
   } else {
     out <- out & FALSE

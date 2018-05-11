@@ -1,12 +1,12 @@
 #' Correct junctions with three inflows.
 #'
 #' At complex junctions (i.e. more than two inflows to an outflow), the outflow
-#' is broken into two segments at 1/4 of the DEM's cellsize downstream of the
-#' start using
-#' \href{https://grass.osgeo.org/grass73/manuals/v.edit.html}{v.edit}(tool =
+#' is broken into two segments at 1/4 of the DEM's cell size downstream of the
+#' start using the GRASS function
+#' \href{https://grass.osgeo.org/grass74/manuals/v.edit.html}{v.edit}(tool =
 #' break). Then, the stream with the smallest angle to the outflow is moved to
 #' this new junction using
-#' \href{https://grass.osgeo.org/grass73/manuals/v.edit.html}{v.edit}(tool =
+#' \href{https://grass.osgeo.org/grass74/manuals/v.edit.html}{v.edit}(tool =
 #' vertexmove). So far, this function works only for junctions with three
 #' inflows, not more.
 #'
@@ -32,9 +32,9 @@
 #' \donttest{
 #' # Initiate GRASS session
 #' if(.Platform$OS.type == "windows"){
-#'   gisbase = "c:/Program Files/GRASS GIS 7.2.0"
+#'   gisbase = "c:/Program Files/GRASS GIS 7.4.0"
 #'   } else {
-#'   gisbase = "/usr/lib/grass72/"
+#'   gisbase = "/usr/lib/grass74/"
 #'   }
 #' initGRASS(gisBase = gisbase,
 #'     home = tempdir(),
@@ -43,7 +43,7 @@
 #' # Load files into GRASS
 #' dem_path <- system.file("extdata", "nc", "elev_ned_30m.tif", package = "openSTARS")
 #' sites_path <- system.file("extdata", "nc", "sites_nc.shp", package = "openSTARS")
-#' setup_grass_environment(dem = dem_path, sites = sites_path)
+#' setup_grass_environment(dem = dem_path)
 #' import_data(dem = dem_path, sites = sites_path)
 #' gmeta()
 #'
@@ -116,7 +116,7 @@ correct_compl_junctions <- function(clean = TRUE, celltoldig = 2){
 
   # Create file of point positions 0.8 x cellsize  upstream (inflows) and  
   # 0.1 x cellsizes downstream (outflows) from junction to get the flow direction
-  # close to the juction cellsize as coordinate does not work, because some 
+  # close to the juction; cellsize as coordinate does not work, because some 
   # segements are only one cellsize long; 0.8 lays in the next cell
   # for outflows, use cell in which junction lies
   points <- file.path(temp_dir,"complex_points.txt")
@@ -240,7 +240,7 @@ correct_compl_junctions <- function(clean = TRUE, celltoldig = 2){
               vector = "streams_v,streams_v_o"), ignore.stderr = TRUE)
 
   message("Original stream topology file moved to streams_v_o.\n")
-  message("Breaking lines and moving vertices...\n")
+  message("Breaking lines and moving vertices ...")
 
   # Break features at cut coordinates
   for(i in 1:nrow(dt.junctions)){
@@ -288,7 +288,8 @@ correct_compl_junctions <- function(clean = TRUE, celltoldig = 2){
   }
   # writeVECT produces new cat column;
   # IMPORTANT: Take care not to base calculations on that but to use manually updated cat_ (= new 'stream'))
-  writeVECT(streams,"streams_v",v.in.ogr_flags=c("overwrite","quiet"), ignore.stderr = TRUE)
+  # 20180219: override projection check
+  writeVECT(streams, "streams_v", v.in.ogr_flags = c("overwrite", "quiet", "o"), ignore.stderr = TRUE)
   rm("streams")
 
   # Recalculate length of line segments
@@ -324,21 +325,27 @@ correct_compl_junctions <- function(clean = TRUE, celltoldig = 2){
   i_cut <- which(dt.junctions[,cat_small] %in% unlist(dt.junctions[,paste0("prev_str0",1:3)]))
   if(length(i_cut) > 0){
     # find where cat_small is previous stream
-    i_prev <- do.call(rbind,lapply(i_cut, function(x) which(dt.junctions[,paste0("prev_str0",1:3)] == dt.junctions[x,cat_small], arr.ind = TRUE)))
-    ii <- i_prev[1]
-    jj <- paste0("prev_str0",1:3)[i_prev[2]]
+    i_prev <- do.call(rbind, lapply(i_cut, function(x) 
+      which(dt.junctions[, paste0("prev_str0", 1:3)] == dt.junctions[x, cat_small], arr.ind = TRUE)))
+    ii <- i_prev[,1]
+    jj <- paste0("prev_str0", 1:3)[i_prev[,2]]
+    jjj <- which(colnames(dt.junctions) %in% jj)
+    # make data frame
+    setDF(dt.junctions)
+    # use matrix for indexing because differnt columns might be changed for
+    # different rows
     # change previous stream to cat_large
-    # use data.table like data.frame here
-    dt.junctions[ii, jj] <- dt.junctions[i_cut,cat_large]
+    dt.junctions[cbind(ii, jjj)]  <- dt.junctions[i_cut, "cat_large"]
+    setDT(dt.junctions)
   }
 
   # change move_stream if it was also cat_small or cut_stream to new stream id
   i_cut <- which(dt.junctions[,cat_small] %in% dt.junctions[,move_stream])
   if(length(i_cut) > 0){
     # find where cat_small is move stream
-    i_mov <- do.call(rbind,lapply(i_cut, function(x) which(dt.junctions[,move_stream] == dt.junctions[x,cat_small])))
+    i_mov <- c(do.call(rbind,lapply(i_cut, function(x) which(dt.junctions[,move_stream] == dt.junctions[x,cat_small]))))
     # change move stream to cat_large
-    dt.junctions[i_mov,move_stream] <- dt.junctions[i_cut,cat_large]
+    dt.junctions[i_mov, "move_stream"] <- dt.junctions[i_cut,  cat_large]
   }
 
   # assign updated cat_ value to 'stream' for cut stream segments
@@ -356,7 +363,7 @@ correct_compl_junctions <- function(clean = TRUE, celltoldig = 2){
   tabs <- tabs[-which(tabs == "dt.junctions")]
   remove(list = tabs)
 
-  message("Updating topology...\n")
+  message("Updating topology ...")
 
   for(i in 1:nrow(dt.junctions)){
     # set "next_str" of cat_small and move_stream to cat_large
