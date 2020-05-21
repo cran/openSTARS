@@ -35,7 +35,7 @@ All lengths are rounded to 2 and all areas to 6 decimal places, respectively.
 \donttest{
 # Initiate GRASS session
 if(.Platform$OS.type == "windows"){
-  gisbase = "c:/Program Files/GRASS GIS 7.4.0"
+  gisbase = "c:/Program Files/GRASS GIS 7.6"
   } else {
   gisbase = "/usr/lib/grass74/"
   }
@@ -53,10 +53,13 @@ gmeta()
 # Derive streams from DEM
 derive_streams(burn = 0, accum_threshold = 700, condition = TRUE, clean = TRUE)
 
+check_compl_confluences()
+
 # Prepare edges
 calc_edges()
 
 # Plot data
+library(sp)
 dem <- readRAST('dem', ignore.stderr = TRUE)
 edges <- readVECT('edges', ignore.stderr = TRUE)
 plot(dem, col = terrain.colors(20))

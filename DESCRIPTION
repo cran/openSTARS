@@ -6,7 +6,7 @@ Description: An open source implementation of the 'STARS' toolbox
     It prepares the *.ssn object needed for the 'SSN' package.
     A Digital Elevation Model (DEM) is used to derive stream networks 
     (in contrast to 'STARS' that can clean an existing stream network).
-Version: 1.1.0
+Version: 1.2.0
 Authors@R: c(person("Mira", "Kattwinkel", role = c("aut","cre"),
               email = "mira.kattwinkel@gmx.net"),
 	    person("Eduard", "Szöcs", role = c("aut"),
@@ -17,14 +17,14 @@ License: MIT + file LICENSE
 Encoding: UTF-8
 LazyLoad: true
 LazyData: true
-Imports: methods, progress, rgdal, sf, sp, raster, SSN
-RoxygenNote: 6.0.1
+Imports: methods, progress, rgdal, sp, raster, SSN
+RoxygenNote: 7.1.0
 Suggests: knitr, rmarkdown
 VignetteBuilder: knitr
 NeedsCompilation: no
-Packaged: 2018-05-11 08:20:19 UTC; Mira_2
+Packaged: 2020-05-21 19:15:12 UTC; mira
 Author: Mira Kattwinkel [aut, cre],
   Eduard Szöcs [aut]
 Maintainer: Mira Kattwinkel <mira.kattwinkel@gmx.net>
 Repository: CRAN
-Date/Publication: 2018-05-11 10:12:42 UTC
+Date/Publication: 2020-05-21 19:30:03 UTC

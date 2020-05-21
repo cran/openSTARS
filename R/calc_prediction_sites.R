@@ -18,6 +18,7 @@
 #'Steps include: 
 #'\itemize{ 
 #'\item{Place points on edges with given distance from each other} 
+#'\item{Save the point coordinates in NEAR_X and NEAR_Y.}
 #'\item{Assign unique identifiers (needed by the 'SSN' package) 'pid'
 #'and 'locID'.} 
 #'\item{Get 'rid' and 'netID' of the stream segment the site
@@ -43,28 +44,30 @@
 #' \donttest{
 #' # Initiate GRASS session
 #' if(.Platform$OS.type == "windows"){
-#'   gisbase = "c:/Program Files/GRASS GIS 7.4.0"
+#'   gisbase = "c:/Program Files/GRASS GIS 7.6"
 #'   } else {
 #'   gisbase = "/usr/lib/grass74/"
 #'   }
 #' initGRASS(gisBase = gisbase,
 #'     home = tempdir(),
 #'     override = TRUE)
-#'
+#' 
 #' # Load files into GRASS
 #' dem_path <- system.file("extdata", "nc", "elev_ned_30m.tif", package = "openSTARS")
 #' sites_path <- system.file("extdata", "nc", "sites_nc.shp", package = "openSTARS")
 #' setup_grass_environment(dem = dem_path)
 #' import_data(dem = dem_path, sites = sites_path)
 #' gmeta()
-#'
+#' 
 #' # Derive streams from DEM
 #' derive_streams(burn = 0, accum_threshold = 700, condition = TRUE, clean = TRUE)
-#'
+#' 
+#' check_compl_confluences()
 #' calc_edges()
 #' calc_sites()
 #' calc_prediction_sites(predictions = "preds", dist = 2500)
-#'
+#' 
+#' library(sp)
 #' dem <- readRAST('dem', ignore.stderr = TRUE)
 #' sites <- readVECT('sites', ignore.stderr = TRUE)
 #' preds <- readVECT('preds', ignore.stderr = TRUE)
@@ -151,8 +154,8 @@ calc_prediction_sites <- function(predictions, dist = NULL, nsites = 10,
   execGRASS("v.db.addtable", flags = c("quiet"),
             parameters = list(
               map = predictions,
-              columns = "cat_edge int,dist double precision,pid int,loc int,net int,rid int,out_dist double,distalong double precision,ratio double precision"
-           ))
+              columns = "cat_edge int,str_edge int,dist double precision,nx double precision,ny double precision,pid int,loc int,net int,rid int,out_dist double,distalong double precision,ratio double precision"
+           ), ignore.stderr = TRUE)
 
   # MiKatt: Necessary to get upper and lower case column names
   execGRASS("v.db.renamecolumn", flags = "quiet",
@@ -170,16 +173,25 @@ calc_prediction_sites <- function(predictions, dist = NULL, nsites = 10,
               map = predictions,
               column = "out_dist,upDist"
             ))
+  execGRASS("v.db.renamecolumn", flags = "quiet",
+            parameters = list(
+              map = predictions,
+              column = "nx,NEAR_X"
+            ))
+  execGRASS("v.db.renamecolumn", flags = "quiet",
+            parameters = list(
+              map = predictions,
+              column = "ny,NEAR_Y"
+            ))
   
   message("Setting cat_edge ...")
-  # MiKatt: additionally get cat of nearest edge for later joining of netID and rid
+  # MiKatt: additionally get x and y coordinate
   execGRASS("v.distance",
             flags = c("overwrite", "quiet"),
             parameters = list(from = predictions,
                               to = "edges",
-                              #output = "connectors",
-                              upload = "cat,dist",
-                              column = "cat_edge,dist"))
+                              upload = "cat,dist,to_x,to_y",
+                              column = "cat_edge,dist,NEAR_X,NEAR_Y"))
 
   message("Setting pid and locID ...")
   execGRASS("v.db.update",
@@ -201,6 +213,12 @@ calc_prediction_sites <- function(predictions, dist = NULL, nsites = 10,
               sql = sql_str
             ))
   sql_str<- paste0("UPDATE ", predictions, " SET netID=(SELECT netID FROM edges WHERE ",
+                   predictions,".cat_edge=edges.cat)")
+  execGRASS("db.execute",
+            parameters = list(
+              sql = sql_str
+            ))
+  sql_str<- paste0("UPDATE ", predictions, " SET str_edge=(SELECT stream FROM edges WHERE ",
                    predictions,".cat_edge=edges.cat)")
   execGRASS("db.execute",
             parameters = list(
@@ -255,6 +273,9 @@ calc_prediction_sites <- function(predictions, dist = NULL, nsites = 10,
             parameters = list(
               sql=sql_str
             ))
+  execGRASS("v.db.dropcolumn",
+            map = predictions,
+            columns = "cat_edge")
 }
 
 #' Calculate offset

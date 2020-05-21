@@ -24,16 +24,6 @@ outlet and should not be called by the user.
 \details{
 calcCatchmArea_assignNetID
 }
-\examples{
-\dontrun{
- outlets <- dt.streams[next_str == -1, stream]
- netID <- 1
- for(i in outlets){
-   calcCatchmArea_assignNetID(dt.streams, id = i, netID)
-   netID <- netID + 1
- }
-}
-}
 \author{
 Mira Kattwinkel, \email{mira.kattwinkel@gmx.net}
 }

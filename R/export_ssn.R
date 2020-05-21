@@ -27,7 +27,7 @@
 #' \donttest{
 #' # Initiate GRASS session
 #' if(.Platform$OS.type == "windows"){
-#'   gisbase = "c:/Program Files/GRASS GIS 7.4.0"
+#'   gisbase = "c:/Program Files/GRASS GIS 7.6"
 #'   } else {
 #'   gisbase = "/usr/lib/grass74/"
 #'   }
@@ -45,11 +45,12 @@
 #' # Derive streams from DEM
 #' derive_streams(burn = 0, accum_threshold = 700, condition = TRUE, clean = TRUE)
 #'
-#' # Check and correct complex junctions (there are no complex juctions in this 
-#' # example date set)
-#' cj <- check_compl_junctions()
+#' # Check and correct complex confluences (there are no complex confluences in this
+#' # example date set; set accum_threshold in derive_streams to a smaller value
+#' # to create complex confluences)
+#' cj <- check_compl_confluences()
 #' if(cj){
-#'   correct_compl_junctions()
+#'   correct_compl_confluences()
 #' }
 #' 
 #' # Prepare edges
@@ -72,12 +73,12 @@ export_ssn <- function(path, predictions = NULL, delete_directory = FALSE){
   cnames<-execGRASS("db.columns",
                     parameters = list(
                       table = "edges"
-                    ), intern=T)
+                    ), intern = TRUE)
 
   cnames<-c(cnames,execGRASS("db.columns",
                     parameters = list(
                       table = "sites"
-                    ), intern=T))
+                    ), intern = TRUE))
 
   if(!is.null(predictions)){
     cnames <- NULL
@@ -85,7 +86,7 @@ export_ssn <- function(path, predictions = NULL, delete_directory = FALSE){
     cnames<-c(cnames,c(cnames,execGRASS("db.columns",
                                parameters = list(
                                  table = predictions[i]
-                               ), intern=T)))
+                               ), intern = TRUE)))
     }
   }
 
@@ -105,10 +106,10 @@ export_ssn <- function(path, predictions = NULL, delete_directory = FALSE){
             flags = "quiet",
             parameters = list(
               map = "edges2",
-              columns = "stream,next_str,prev_str01,prev_str02"
+              columns = "next_str,prev_str01,prev_str02"
             ))
   # 20180219: ESRI_Shapefile is no longer the default format
-  execGRASS("v.out.ogr",
+  a <- execGRASS("v.out.ogr",
             flags = c("overwrite", "quiet"),
             parameters = list(
               input = "edges2",
@@ -116,7 +117,8 @@ export_ssn <- function(path, predictions = NULL, delete_directory = FALSE){
               output = path,
               format = "ESRI_Shapefile",
               output_layer = "edges"
-            ))
+              #dsco = "RESIZE=YES" does not help to prevent warning
+            ), intern = TRUE, ignore.stderr = TRUE)
   execGRASS("g.remove",
             flags = c("quiet", "f"),
             parameters = list(
@@ -125,7 +127,7 @@ export_ssn <- function(path, predictions = NULL, delete_directory = FALSE){
             ))
 
   # write sites
-  execGRASS("v.out.ogr",
+  a <- execGRASS("v.out.ogr",
             c("overwrite", "quiet"),
             parameters = list(
               input = "sites",
@@ -133,12 +135,12 @@ export_ssn <- function(path, predictions = NULL, delete_directory = FALSE){
               output = path,
               format = "ESRI_Shapefile",
               output_layer = "sites"
-            ))
+            ), intern = TRUE, ignore.stderr = TRUE)
 
   # write preds
   if(!is.null(predictions)){
     for(i in seq_along(predictions))
-      execGRASS("v.out.ogr",
+     a <- execGRASS("v.out.ogr",
                 c("overwrite", "quiet"),
                 parameters = list(
                   input = predictions[i],
@@ -146,7 +148,7 @@ export_ssn <- function(path, predictions = NULL, delete_directory = FALSE){
                   output = path,
                   format = "ESRI_Shapefile",
                   output_layer = predictions[i]
-                ))
+                ), intern = TRUE, ignore.stderr = TRUE)
   }
 
   # create binary
@@ -192,8 +194,8 @@ calc_binary <- function(){
                       type = "vect"
                     ),
                     intern = TRUE)
-  if (!"sites_o" %in% vect)
-    stop("Sites not found. Did you run import_data()?")
+  #if (!"sites_o" %in% vect)
+  #  stop("Sites not found. Did you run import_data()?")
   if (!"edges" %in% vect)
     stop("edges not found. Did you run calc_edges()?")
   if (!"sites" %in% vect)

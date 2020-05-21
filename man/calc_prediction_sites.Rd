@@ -4,8 +4,7 @@
 \alias{calc_prediction_sites}
 \title{Calculate prediction sites for 'SSN' object.}
 \usage{
-calc_prediction_sites(predictions, dist = NULL, nsites = 10,
-  netIDs = NULL)
+calc_prediction_sites(predictions, dist = NULL, nsites = 10, netIDs = NULL)
 }
 \arguments{
 \item{predictions}{string giving the name for the prediction sites map.}
@@ -31,6 +30,7 @@ smaller than \code{nsites}.
 Steps include: 
 \itemize{ 
 \item{Place points on edges with given distance from each other} 
+\item{Save the point coordinates in NEAR_X and NEAR_Y.}
 \item{Assign unique identifiers (needed by the 'SSN' package) 'pid'
 and 'locID'.} 
 \item{Get 'rid' and 'netID' of the stream segment the site
@@ -54,7 +54,7 @@ Points are created using
 \donttest{
 # Initiate GRASS session
 if(.Platform$OS.type == "windows"){
-  gisbase = "c:/Program Files/GRASS GIS 7.4.0"
+  gisbase = "c:/Program Files/GRASS GIS 7.6"
   } else {
   gisbase = "/usr/lib/grass74/"
   }
@@ -72,10 +72,12 @@ gmeta()
 # Derive streams from DEM
 derive_streams(burn = 0, accum_threshold = 700, condition = TRUE, clean = TRUE)
 
+check_compl_confluences()
 calc_edges()
 calc_sites()
 calc_prediction_sites(predictions = "preds", dist = 2500)
 
+library(sp)
 dem <- readRAST('dem', ignore.stderr = TRUE)
 sites <- readVECT('sites', ignore.stderr = TRUE)
 preds <- readVECT('preds', ignore.stderr = TRUE)

@@ -8,25 +8,29 @@
 #'
 #' @param burn numeric; how many meters should the streams be burned into the
 #'   DEM? Only applicable if a mapped stream network is provided in \code{\link{import_data}}.
+#'   Defaults to 0.
 #' @param accum_threshold integer; accumulation threshold to use (i.e. minimum
-#'   flow accumulation value in cells that will initiate a new stream). See 
-#'   details below.
+#'   flow accumulation value in cells that will initiate a new stream). A small value
+#'   results in many small streams. Defaults to 700 but a reasonable value 
+#'   strongly depends on the raster resolution. See details below.
 #' @param min_stream_length integer: minimum stream length in number of DEM
-#'   raster cells; shorter first order stream segments are deleted; default: 0. 
-#'   See details below.
-#' @param condition logical; should the DEM be conditioned using
-#'   \href{https://grass.osgeo.org/grass74/manuals/addons/r.hydrodem.html}{r.hydrodem}'
+#'   raster cells; shorter first order stream segments are deleted. Defaults to 0
+#'   but a reasonable value strongly depends on the raster resolution. See details below.
+#' @param condition logical; should the DEM be conditioned using the GRASS function
+#'   \href{https://grass.osgeo.org/grass74/manuals/addons/r.hydrodem.html}{r.hydrodem};
+#'    default: TRUE.
 #' @param dem_name character vector, optional; default: 'dem'; useful if
 #'   conditioned and / or burnt in DEM raster from previous runs shall be used.
 #' @param clean logical; should intermediate raster layer of imported streams
-#'   ('streams_or') be removed from the GRASS session?
+#'   ('streams_or') be removed from the GRASS session? Defaults to TRUE.
 #' @param mem logical; should -m flag in the GRASS function 
 #' \href{https://grass.osgeo.org/grass74/manuals/r.watershed.html}{r.watershed} 
-#'  be used (for data preparation)? 
+#'  be used (for data preparation)? Defaults to FALSE; if set to TRUE the calculation
+#'  uses disk swap mode, i.e. it is not carried out in the RAM but also using disk space.
+#'  Useful for large data sets but also slower.
 #'   
 #' @return Nothing. The function produces the following maps:
 #' \itemize{
-#'  \item{'streams_r'} {derived streams (raster)}
 #'  \item{'streams_v'} {derived streams with topology (vector)}
 #'  \item{'dirs'} {flow directions (raster)}
 #'  \item{'accums'} {accumulation values (raster)}
@@ -52,7 +56,7 @@
 #' \donttest{
 #' # Initiate GRASS session
 #' if(.Platform$OS.type == "windows"){
-#'   gisbase = "c:/Program Files/GRASS GIS 7.4.0"
+#'   gisbase = "c:/Program Files/GRASS GIS 7.6"
 #'   } else {
 #'   gisbase = "/usr/lib/grass74/"
 #'   }
@@ -63,22 +67,28 @@
 #' # Load files into GRASS
 #' dem_path <- system.file("extdata", "nc", "elev_ned_30m.tif", package = "openSTARS")
 #' sites_path <- system.file("extdata", "nc", "sites_nc.shp", package = "openSTARS")
+#' streams_path <- system.file("extdata", "nc", "streams.shp", package = "openSTARS")
 #' setup_grass_environment(dem = dem_path)
-#' import_data(dem = dem_path, sites = sites_path)
+#' import_data(dem = dem_path, sites = sites_path, streams = streams_path)
 #' gmeta()
 #'
 #' # Derive streams from DEM
-#' derive_streams(burn = 0, accum_threshold = 700, condition = TRUE, clean = TRUE)
+#' derive_streams(burn = 10, accum_threshold = 700, condition = TRUE, clean = TRUE)
+#' 
+#' # Plot
+#' library(sp)
 #' dem <- readRAST('dem', ignore.stderr = TRUE)
 #' sites <- readVECT('sites_o', ignore.stderr = TRUE)
+#' streams_o <- readVECT('streams_o', ignore.stderr = TRUE)
 #' streams <- readVECT('streams_v', ignore.stderr = TRUE)
 #' plot(dem, col = terrain.colors(20))
 #' lines(streams, col = 'blue', lwd = 2)
+#' lines(streams_o, col = 'lightblue', lwd = 1)
 #' points(sites, pch = 4)
 #' }
 #' 
 
-derive_streams <- function(burn = 5, accum_threshold = 700, condition = TRUE,
+derive_streams <- function(burn = 0, accum_threshold = 700, condition = TRUE,
                            min_stream_length = 0, dem_name = NULL, clean = TRUE,
                            mem = FALSE) {
 
@@ -227,6 +237,10 @@ derive_streams <- function(burn = 5, accum_threshold = 700, condition = TRUE,
                                 accumulation = "accums",       # input
                                 stream_vect = "streams_v"),    # output
               ignore.stderr=T)
+    execGRASS("g.remove", flags = c("f", "quiet"),
+              type = "raster",
+              name = "streams_r"
+    )
 
     # MiKatt: ESRI shape files must not have column names with more than 10 characters
     execGRASS("v.db.renamecolumn", flags = "quiet",
@@ -248,6 +262,27 @@ derive_streams <- function(burn = 5, accum_threshold = 700, condition = TRUE,
                 columns = c("strahler","horton","shreve","hack","topo_dim","scheidegger","drwal_old","stright",
                             "sinosoid","source_elev","outlet_elev","elev_drop","out_drop","gradient")
               ))
+    
+    # delete stream segments with zero length
+    a <- execGRASS("v.extract", flags = c("overwrite", "quiet"),
+                   parameters = list(
+                     input = "streams_v", 
+                     output = "streams_v1",
+                     type = "line",
+                     where = paste0("length > 0")
+                   ), intern = TRUE, ignore.stderr = TRUE)
+    
+    execGRASS("g.copy", flags = c("overwrite", "quiet"),
+              parameters = list(
+                vector = "streams_v1,streams_v"
+                ), intern = TRUE, ignore.stderr = TRUE)
+    
+    execGRASS("g.remove", flags = c("quiet", "f"),
+              parameters = list(
+                type = "vector",
+                name = "streams_v1"))
+    
+    message("Derived streams saved as 'streams_v'.")
 }
 
 #' Calculate RAM needed for deriving the stream network from DEM

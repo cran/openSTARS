@@ -4,14 +4,23 @@
 \alias{import_data}
 \title{Import data into 'GRASS.'}
 \usage{
-import_data(dem, band = 1, sites, streams = NULL, snap_streams = FALSE,
-  pred_sites = NULL, predictor_raster = NULL, predictor_r_names = NULL,
-  predictor_vector = NULL, predictor_v_names = NULL)
+import_data(
+  dem,
+  band = 1,
+  sites,
+  streams = NULL,
+  snap_streams = FALSE,
+  pred_sites = NULL,
+  predictor_raster = NULL,
+  predictor_r_names = NULL,
+  predictor_vector = NULL,
+  predictor_v_names = NULL
+)
 }
 \arguments{
 \item{dem}{character; path to DEM (digital elevation model) raster file.}
 
-\item{band}{integer (optional); defines which band is used}
+\item{band}{integer (optional); defines which band of the dem to use}
 
 \item{sites}{character string or object; path to sites vector file (ESRI shape) 
 or sp or sf data object.}
@@ -25,7 +34,9 @@ If TRUE line ends of the streams are snapped to the next feature if they are
  unconnected with threshold of 10 m using 'GRASS' function v.clean.}
 
 \item{pred_sites}{character string vector or object(s) (optional); path(s) to prediction sites 
-vector files (ESRI shape) or sp or sf data object.}
+vector files (ESRI shape) or sp or sf data object. 
+Different formats (i.e. path and objects) must not be mixed; more than one sf or sp
+object must be provided as a list, not concatenated with \code{c}.}
 
 \item{predictor_raster}{character vector (optional); paths to raster data to 
 import as predictors.}
@@ -34,7 +45,9 @@ import as predictors.}
 variables in raster format; if not provided \code{perdictor_raster} is used.}
 
 \item{predictor_vector}{character string vector of object(s) (optional); path(s)
-to vector data (ESRI shape) or sp or sf object names to import as predictors.}
+to vector data (ESRI shape) or sp or sf object names to import as predictors.
+Different formats (i.e. path and objects) must not be mixed; more than one sf or sp
+object must be provided as a list, not concatenated with \code{c}.}
 
 \item{predictor_v_names}{character vector (optional); names for potential predictor
 variables in vector format ; if not provided \code{perdictor_vector} is used.}
@@ -65,7 +78,14 @@ All vector data (sites, streams and potential predictors) is imported
 into the current location using \href{https://grass.osgeo.org/grass74/manuals/v.import.html}{v.import}.
 Hence, if the projections does not match to the one of the DEM (which was used
 to specify the location in \code{\link{setup_grass_environment}}) the maps 
-are imported on the fly.
+are projected and imported on the fly.
+All raster data are not transformed but it is assumed that they have the same 
+projection as the current location. Hence, it is important to make sure that 
+they all have indeed the same projection (and same cell size) and that the correct
+one is set in \code{\link{setup_grass_environment}}. If this condition is not met,
+the raster data should be propocessed before importing.
+Use \code{\link{check_projection}} to compare the projection of a raster data set and
+the one of the current location.
 }
 \note{
 A GRASS session must be initiated before, see \code{\link[rgrass7]{initGRASS}}.
@@ -78,9 +98,8 @@ when defining sp objects.
 }
 \examples{
 \donttest{
-# Initiate GRASS session
 if(.Platform$OS.type == "windows"){
-  gisbase = "c:/Program Files/GRASS GIS 7.4.0"
+  gisbase = "c:/Program Files/GRASS GIS 7.6"
   } else {
   gisbase = "/usr/lib/grass74/"
   }
@@ -91,22 +110,20 @@ initGRASS(gisBase = gisbase,
 # Load files into GRASS
 dem_path <- system.file("extdata", "nc", "elev_ned_30m.tif", package = "openSTARS")
 sites_path <- system.file("extdata", "nc", "sites_nc.shp", package = "openSTARS")
-preds_path <- system.file("extdata", "nc", "landuse.shp", package = "openSTARS")
+streams_path <- system.file("extdata", "nc", "streams.shp", package = "openSTARS")
+preds_v_path <- system.file("extdata", "nc", "pointsources.shp", package = "openSTARS")
+preds_r_path <- system.file("extdata", "nc", "landuse_r.tif", package = "openSTARS")
+                 
 setup_grass_environment(dem = dem_path)
-import_data(dem = dem_path, sites = sites_path, predictor_vector = preds_path)
+import_data(dem = dem_path, sites = sites_path, streams = streams_path,
+            predictor_vector = preds_v_path, predictor_raster = preds_r_path)
+gmeta()
 
 # Plot data
+library(sp)
 dem <- readRAST("dem", ignore.stderr = TRUE)
 sites_orig <-  readVECT("sites_o", ignore.stderr = TRUE)
-lu <- readVECT("landuse", ignore.stderr = TRUE)
-plot(dem, col = terrain.colors(20))
-plot(dem, col = grey.colors(20))
-col <- adjustcolor(c("red", "green", "blue", "yellow"), alpha.f = 0.3)
-plot(lu, add = TRUE, col = col[as.numeric(as.factor(lu$landuse))])
-legend("top", col = col, pch = 15, 
-  legend = as.factor(sort(unique(lu$landuse))), title = "landuse", ncol = 4)
-points(sites_orig, pch = 4)
-
+lu <- readRAST("landuse_r", ignore.stderr = TRUE)
 # import additional vector data
 fp <-  system.file("extdata", "nc", "pointsources.shp", package = "openSTARS")
 execGRASS("v.import", flags = c("overwrite", "quiet"),
@@ -116,11 +133,27 @@ parameters = list(
   extent = "region"),  # to import into current regien
   intern = TRUE, ignore.stderr = TRUE)
   
+#plot(dem, col = terrain.colors(20))
+plot(dem, col = grey.colors(20))
+points(sites_orig, pch = 4)
 ps <- readVECT("psources")
 points(ps, bg = "red", pch = 21, col = "grey", cex = 1.5)
+
+# plot landuse data
+library(raster)
+op <- par()
+par(xpd = FALSE)
+plot(raster(lu), legend = FALSE, xaxt = "n", yaxt = "n", bty = "n",
+col = c("red", "goldenrod", "green", "forestgreen","darkgreen", "blue", "lightblue"))
+par(xpd = TRUE)
+legend("bottom", cex = 0.75,
+  legend = c("developed", "agriculture", "herbaceous", "shrubland", "forest", "water", "sediment"),
+  fill = c("red", "goldenrod", "green", "forestgreen","darkgreen", "blue", "lightblue"),
+  horiz = TRUE, inset = -0.175)
+par <- op
 }
 }
 \author{
-Eduard Szoecs, \email{eduardszoecs@gmail.com},  Mira Kattwinkel
+Eduard Szoecs, \email{eduardszoecs@gmial.com},  Mira Kattwinkel
  \email{mira.kattwinkel@gmx.net}
 }

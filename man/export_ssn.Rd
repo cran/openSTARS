@@ -32,7 +32,7 @@ used before and the existing data shall be overwritten.
 \donttest{
 # Initiate GRASS session
 if(.Platform$OS.type == "windows"){
-  gisbase = "c:/Program Files/GRASS GIS 7.4.0"
+  gisbase = "c:/Program Files/GRASS GIS 7.6"
   } else {
   gisbase = "/usr/lib/grass74/"
   }
@@ -50,11 +50,12 @@ gmeta()
 # Derive streams from DEM
 derive_streams(burn = 0, accum_threshold = 700, condition = TRUE, clean = TRUE)
 
-# Check and correct complex junctions (there are no complex juctions in this 
-# example date set)
-cj <- check_compl_junctions()
+# Check and correct complex confluences (there are no complex confluences in this
+# example date set; set accum_threshold in derive_streams to a smaller value
+# to create complex confluences)
+cj <- check_compl_confluences()
 if(cj){
-  correct_compl_junctions()
+  correct_compl_confluences()
 }
 
 # Prepare edges

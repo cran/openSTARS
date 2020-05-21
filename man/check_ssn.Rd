@@ -22,7 +22,7 @@ essential columns are missing or values have illegal values.
 \donttest{
 # Initiate GRASS session
 if(.Platform$OS.type == "windows"){
-  gisbase = "c:/Program Files/GRASS GIS 7.4.0"
+  gisbase = "c:/Program Files/GRASS GIS 7.6"
   } else {
   gisbase = "/usr/lib/grass74/"
   }
@@ -40,11 +40,12 @@ gmeta()
 # Derive streams from DEM
 derive_streams(burn = 0, accum_threshold = 700, condition = TRUE, clean = TRUE)
 
-# Check and correct complex junctions (there are no complex juctions in this 
-# example date set if the accum_threshold is high)
-cj <- check_compl_junctions()
+# Check and correct complex confluences (there are no complex confluences in this
+# example date set; set accum_threshold in derive_streams to a smaller value
+# to create complex confluences)
+cj <- check_compl_confluences()
 if(cj){
-  correct_compl_junctions()
+  correct_compl_confluences()
 }
 
 # Prepare edges
@@ -56,6 +57,7 @@ calc_sites()
 calc_attributes_sites_exact()
 
 # Plot data
+library(sp)
 dem <- readRAST('dem', ignore.stderr = TRUE)
 sites <- readVECT('sites', ignore.stderr = TRUE)
 sites_orig <-  readVECT('sites_o', ignore.stderr = TRUE)

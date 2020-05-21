@@ -7,11 +7,11 @@
 #' Spatial Information Needed to Fit Spatial Statistical Models to Stream
 #' Network Data. J. Stat. Softw., 56 (2).
 #'
-#' @param sites_map character; name of the sites the attributes shall be
-#'   calculated for. "sites" refers to the observation sites.
-#' @param input_attr_name character vector; input column name in the edges
-#'   attribute table.
-#' @param output_attr_name character vector (optional); output column name
+#' @param sites_map character; name of the sites (observation or prediction) 
+#'  attributes shall be calculated for. "sites" (default) refers to the observation sites.
+#' @param input_attr_name character vector; input column name(s) in the
+#'   attribute table of the vector map "edges".
+#' @param output_attr_name character vector (optional); output column name(s)
 #'   appended to the site attribute data table. If not provided it is set to
 #'   \code{input_attr_name}. Attribute names must not be longer than 10
 #'   characters.
@@ -29,12 +29,15 @@
 #' }
 #'
 #' @details The approximate total catchment area (H2OAreaA) is always calculated
-#' if \code{calc_basin_area} is TRUE. If \code{stat} is one of "min", "max", "mean" or "percent" the
-#'   function assigns the value of the edge the site lies on. Otherwise, the
-#'   value is calculated as the sum of all edges upstream of the previous
-#'   junction and the proportional value of the edge the site lies on (based on
+#'   if \code{calc_basin_area} is TRUE. If \code{stat} is one of 
+#'   "min", "max", "mean" or "percent" the function assigns the value of the edge the site lies on. 
+#'   Otherwise, the value is calculated as the sum of all edges upstream of the previous
+#'   confluence and the proportional value of the edge the site lies on (based on
 #'   the distance ratio 'ratio'); this is useful e.g. for counts of dams or waste water
-#'   treatment plant or total catchment area.
+#'   treatment plants or total catchment area.
+#'   
+#'   \code{input_attr_name} must give the column names of the edges attribute table
+#'   for that the statistics should be calculated. 
 #'
 #' @note \code{\link{import_data}}, \code{\link{derive_streams}},
 #'   \code{\link{calc_edges}}, \code{\link{calc_sites}} or
@@ -48,7 +51,7 @@
 #' \donttest{
 #' # Initiate GRASS session
 #' if(.Platform$OS.type == "windows"){
-#'   gisbase = "c:/Program Files/GRASS GIS 7.4.0"
+#'   gisbase = "c:/Program Files/GRASS GIS 7.6"
 #'   } else {
 #'   gisbase = "/usr/lib/grass74/"
 #'   }
@@ -59,20 +62,21 @@
 #' # Load files into GRASS
 #' dem_path <- system.file("extdata", "nc", "elev_ned_30m.tif", package = "openSTARS")
 #' sites_path <- system.file("extdata", "nc", "sites_nc.shp", package = "openSTARS")
-#' pred_path <- system.file("extdata", "nc", "landuse.shp", package = "openSTARS")
+#' pred_path <- system.file("extdata", "nc", "geology.shp", package = "openSTARS")
 #' setup_grass_environment(dem = dem_path)
 #' import_data(dem = dem_path, sites = sites_path,
-#'  predictor_vector = pred_path, predictor_v_names = "landuse")
+#'  predictor_vector = pred_path)
 #' gmeta()
 #'
 #' # Derive streams from DEM
 #' derive_streams(burn = 0, accum_threshold = 700, condition = TRUE, clean = TRUE)
 #'
-#' # Check and correct complex junctions (there are no complex juctions in this 
-#' # example date set)
-#' cj <- check_compl_junctions()
+#' # Check and correct complex confluences (there are no complex confluences in this
+#' # example date set; set accum_threshold in derive_streams to a smaller value
+#' # to create complex confluences)
+#' cj <- check_compl_confluences()
 #' if(cj){
-#'   correct_compl_junctions()
+#'   correct_compl_confluences()
 #' }
 #' 
 #' # Prepare edges
@@ -85,44 +89,34 @@
 #'     slope = "slope"
 #'     ))
 #' calc_attributes_edges(input_raster = "slope", stat_rast = "max", attr_name_rast = "maxSlo",
-#'                      input_vector = "landuse", stat_vect = "percent", attr_name_vect = "landuse")
+#'                      input_vector = "geology", stat_vect = "percent", attr_name_vect = "GEO_NAME")
 #' 
 #' calc_sites() 
 #'  
 #' # approximate potential predictor variables for each site based on edge values
-#' calc_attributes_sites_approx(input_attr_name = c("maxSlo", "agri", "forest", "grass", "urban"), 
-#'   output_attr_name = c("maxSloA", "agriA", "forestA", "grassA", "urbanA"),
-#'   stat = c("max", rep("percent", 4)))
+#' calc_attributes_sites_approx(
+#' input_attr_name = c('maxSlo', 'CZamp', 'CZbgp', 'CZfgp', 'CZgp', 'CZigp', 'CZlgp', 'CZvep', 'Kmp'), 
+#'   stat = c("max", rep("percent", 8)))
 #' 
-#' # Plot data with maximum slope per edge as color ramp (steep slopes in red)
-#' dem <- readRAST('dem', ignore.stderr = TRUE)
+#' # plot share of a certain geology in the sampling point's catchment as
+#' # point size
+#' library(sp)
 #' edges <- readVECT('edges', ignore.stderr = TRUE)
 #' sites <- readVECT('sites', ignore.stderr = TRUE)
-#' lu <- readVECT("landuse", ignore.stderr = TRUE)
-#' plot(dem, col = gray(seq(0,1,length.out=20))) 
-#' col <- adjustcolor(c("red", "green", "blue", "yellow"), alpha.f = 0.3)
-#' plot(lu, add = TRUE, col = col[as.numeric(as.factor(lu$landuse))])
-#'  mm <- range(c(edges$agri_c), na.rm = TRUE) 
-#' b <- seq(from=mm[1],to=mm[2]+diff(mm)*0.01,length.out=10)
-#' c_ramp <- colorRampPalette(c("blue", "red"))
-#' cols <- c_ramp(length(b))[as.numeric(cut(edges$agri_c, breaks = b, right = FALSE))]
-#' plot(edges,col=cols, add = TRUE , lwd=2)
-#' mm <- range(c(sites$agriA), na.rm = TRUE) 
-#' b <- seq(from=mm[1],to=mm[2]+diff(mm)*0.01,length.out=10)
-#' c_ramp <- colorRampPalette(c("blue", "red"))
-#' cols <- c_ramp(length(b))[as.numeric(cut(sites$agriA, breaks = b, right = FALSE))]
-#' plot(sites ,col=cols, add = TRUE, pch = 19)
-#' legend("topleft", col = col, pch = 15, legend = as.factor(sort(unique(lu$landuse))), 
-#'   title = "landuse", ncol = 4)
-#' legend("topright", col = cols[c(1, length(cols))], lwd = 2, 
-#'   legend = paste("precent agri", c(min(sites$agriA), max(sites$agriA))), pch = 19)
+#' geo <- readVECT("geology", ignore.stderr = TRUE)
+#' plot(geo, col = adjustcolor(1:8, alpha.f = 0.5)[as.factor(geo$GEO_NAME)])
+#' plot(edges, col = "blue", add = TRUE)
+#' plot(sites, col = 1, add = TRUE, pch = 19, cex = (sites$CZbgp + 0.15) * 2)
+#' legend("left", col = adjustcolor(1:8, alpha.f = 0.5), bty = "n",
+#' legend = unique(geo$GEO_NAME), pch = 15, title = "geology")
+#' legend("right", col = 1, pch = 19, legend = seq(0, 1, 0.2), bty = "n",
+#' title = "share CZbg\nin catchment", pt.cex =  (seq(0, 1, 0.2) + 0.15) * 2)
 #'}
-#'                  
 
 calc_attributes_sites_approx <- function(sites_map = "sites",
-                                         input_attr_name,
+                                         input_attr_name = NULL,
                                          output_attr_name = NULL,
-                                         stat,
+                                         stat = NULL,
                                          round_dig = 2,
                                          calc_basin_area = TRUE){
 
@@ -135,15 +129,18 @@ calc_attributes_sites_approx <- function(sites_map = "sites",
     
     cnames <- execGRASS("db.columns", 
                         parameters = list(
-                          table = "sites"), 
-                        intern = T)
+                          table = sites_map), 
+                        intern = TRUE)
     if("H2OAreaA" %in% cnames){
       execGRASS("v.db.dropcolumn", flags = "quiet",
                 parameters = list(
-                  map = "sites",
+                  map = sites_map,
                   columns = "H2OAreaA"
                 ))
     }
+  }
+  if(calc_basin_area == FALSE & is.null(input_attr_name)){
+    stop("Either input attribute name(s) must be given or calc_basin_area must be TRUE.")
   }
 
   if(length(input_attr_name) != length(output_attr_name))
@@ -152,7 +149,7 @@ calc_attributes_sites_approx <- function(sites_map = "sites",
   if(any(nchar(output_attr_name)) > 10)
     stop("Attribute names must not be longer than ten characters.")
 
-   if(length(round_dig) == 1)
+  if(length(round_dig) == 1)
     round_dig <- rep(round_dig, length(output_attr_name))
 
   if(length(round_dig) < length(output_attr_name))
@@ -176,27 +173,27 @@ calc_attributes_sites_approx <- function(sites_map = "sites",
                 parameters = list(
                   sql = paste0("UPDATE ", sites_map," SET ", output_attr_name[i], "=",
                                "(SELECT ", paste0(input_attr_name[i],"_c"),
-                               " FROM edges WHERE edges.cat=", sites_map,".cat_edge)")
+                               " FROM edges WHERE edges.stream=", sites_map,".str_edge)")
                 ))
     } else {
       # calculate site attribute as attribute of the two previous edges +
       # (1-ratio) * contribution of edge to total edge attribute
       # for H2O Area or e.g. for total numbers (no of WWTP per catchment)
       # e.g. calculated with stat = "sum" in calc_attributes_edges
-      ecat_prev1 <-  paste0("(SELECT cat FROM edges WHERE edges.stream=(SELECT prev_str01 FROM edges WHERE edges.cat=",sites_map,".cat_edge))")
-      ecat_prev2 <-  paste0("(SELECT cat FROM edges WHERE edges.stream=(SELECT prev_str02 FROM edges WHERE edges.cat=",sites_map,".cat_edge))")
+      stream_prev1 <-  paste0("(SELECT prev_str01 FROM edges WHERE edges.stream=",sites_map,".str_edge)")
+      stream_prev2 <-  paste0("(SELECT prev_str02 FROM edges WHERE edges.stream=",sites_map,".str_edge)")
       if(input_attr_name[i] == "H2OArea"){
         sql_str <-paste0("UPDATE ", sites_map," SET ",output_attr_name[i],
                          " = ROUND(((1-ratio)*",
-                         "(SELECT rcaArea FROM edges WHERE ", sites_map,".cat_edge = edges.cat) +",
-                         "(SELECT H2OArea FROM edges WHERE edges.cat=",ecat_prev1,") +",
-                         "(SELECT H2OArea FROM edges WHERE edges.cat=",ecat_prev2,")),",round_dig[i],")")
+                         "(SELECT rcaArea FROM edges WHERE ", sites_map,".str_edge = edges.stream) +",
+                         "(SELECT H2OArea FROM edges WHERE edges.stream=",stream_prev1,") +",
+                         "(SELECT H2OArea FROM edges WHERE edges.stream=",stream_prev2,")),",round_dig[i],")")
       } else {
         sql_str <-paste0("UPDATE ", sites_map," SET ",output_attr_name[i],
                          " = ROUND(((1-ratio)*",
-                         "(SELECT ", paste0(input_attr_name[i],"_e"), " FROM edges WHERE ", sites_map,".cat_edge = edges.cat) +",
-                         "(SELECT ", paste0(input_attr_name[i],"_c"), " FROM edges WHERE edges.cat=",ecat_prev1,") +",
-                         "(SELECT ", paste0(input_attr_name[i],"_c"), " FROM edges WHERE edges.cat=",ecat_prev2,")),",round_dig[i],")")
+                         "(SELECT ", paste0(input_attr_name[i],"_e"), " FROM edges WHERE ", sites_map,".str_edge = edges.stream) +",
+                         "(SELECT ", paste0(input_attr_name[i],"_c"), " FROM edges WHERE edges.stream=",stream_prev1,") +",
+                         "(SELECT ", paste0(input_attr_name[i],"_c"), " FROM edges WHERE edges.stream=",stream_prev2,")),",round_dig[i],")")
       }
       execGRASS("db.execute",
                 parameters = list(
@@ -206,13 +203,13 @@ calc_attributes_sites_approx <- function(sites_map = "sites",
       if(input_attr_name[i] == "H2OArea"){
         sql_str <- paste0("UPDATE ", sites_map," SET ",output_attr_name[i],
                           " = (1-ratio)*(SELECT rcaArea FROM edges WHERE ",
-                          sites_map,".cat_edge = edges.cat) WHERE cat_edge IN ",
-                          "(SELECT cat FROM edges WHERE prev_str01=0)")
+                          sites_map,".str_edge = edges.stream) WHERE str_edge IN ",
+                          "(SELECT stream FROM edges WHERE prev_str01=0)")
       } else {
         sql_str <- paste0("UPDATE ", sites_map," SET ",output_attr_name[i],
                           " = (1-ratio)*(SELECT ", paste0(input_attr_name[i],"_e"),
-                          " FROM edges WHERE ", sites_map,".cat_edge = edges.cat) WHERE cat_edge IN ",
-                          "(SELECT cat FROM edges WHERE prev_str01=0)")
+                          " FROM edges WHERE ", sites_map,".str_edge = edges.stream) WHERE str_edge IN ",
+                          "(SELECT stream FROM edges WHERE prev_str01=0)")
       }
       execGRASS("db.execute",
                 parameters = list(
@@ -226,4 +223,13 @@ calc_attributes_sites_approx <- function(sites_map = "sites",
                 ))
     }
   }
+  cnames2 <- execGRASS("db.columns", flags = "quiet",
+                             parameters = list(
+                               table = sites_map
+                             ), intern = TRUE)
+  cnames2 <- cnames2[-(which(cnames2 %in% cnames))]
+  #message(writeLines(strwrap(paste0("\nNew attributes values are stored as ", paste("'", cnames2, "'", sep = "", collapse = ", "), " in 'sites'."),
+  #        width = 80)))
+  message(paste0("\nNew attributes values are stored as ", paste("'", cnames2, "'", sep = "", collapse = ", "), " in 'sites'."))
+  
 }

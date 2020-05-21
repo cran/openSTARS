@@ -3,7 +3,6 @@
 \docType{package}
 \name{openSTARS}
 \alias{openSTARS}
-\alias{openSTARS-package}
 \title{openSTARS: An Open Source Implementation of the 'ArcGIS' Toolbox 'STARS'.}
 \description{
 openSTARS provides functions to prepare data so that it can be imported by
@@ -11,49 +10,96 @@ the \code{\link[SSN]{SSN}} package for spatial modelling on stream networks.
 'GRASS GIS 7.0' (or greater) with installed addons r.stream.basins,
 r.stream.distance, r.stream.order, and r.hydrodem is needed.
 }
+\section{obs_data.csv}{
+
+Artificial observation data with arbitrary measurements.
+}
+
+\section{elev_ned30m.tif}{
+
+South-West Wake county National Elevation Data 30m.
+}
+
+\section{sites_nc.shp}{
+
+Arbitrary sites along rivers in North Carolina.
+}
+
+\section{streams.shp}{
+
+Rivers in North Carolina.
+}
+
+\section{geology.shp}{
+
+Geological data.
+}
+
+\section{landuse_r.tif}{
+
+Land use date in North Carolina.
+}
+
+\section{lakes.shp}{
+
+Artificial lakes (not at topologically correct locations)
+}
+
+\section{pointsources.shp}{
+
+Artificial point sources.
+}
+
 \examples{
 \donttest{
-# Initiate GRASS session
 if(.Platform$OS.type == "windows"){
-  gisbase = "c:/Program Files/GRASS GIS 7.4.0"
-  } else {
+gisbase = "c:/Program Files/GRASS GIS 7.6"
+} else {
   gisbase = "/usr/lib/grass74/"
-  }
+}
 initGRASS(gisBase = gisbase,
-    home = tempdir(),
-    override = TRUE)
+          home = tempdir(),
+          override = TRUE)
 
 # Load files into GRASS
 dem_path <- system.file("extdata", "nc", "elev_ned_30m.tif", package = "openSTARS")
 sites_path <- system.file("extdata", "nc", "sites_nc.shp", package = "openSTARS")
-preds_path <- c(system.file("extdata", "nc", "landuse.shp", package = "openSTARS"),
-                system.file("extdata", "nc", "pointsources.shp", package = "openSTARS"))
+streams_path <- system.file("extdata", "nc", "streams.shp", package = "openSTARS")
+preds_v_path <- system.file("extdata", "nc", "pointsources.shp", package = "openSTARS")
+preds_r_path <- system.file("extdata", "nc", "landuse_r.tif", package = "openSTARS")
+
+
 setup_grass_environment(dem = dem_path)
-import_data(dem = dem_path, sites = sites_path, predictor_vector = preds_path)
+import_data(dem = dem_path, sites = sites_path, streams = streams_path,
+            predictor_vector = preds_v_path, predictor_raster = preds_r_path)
 gmeta()
 
 # Derive streams from DEM
-derive_streams(burn = 0, accum_threshold = 700, condition = TRUE, clean = TRUE)
+# burn in 'streams' 10 meters
+derive_streams(burn = 10, accum_threshold = 700, condition = TRUE, clean = TRUE)
 
-# Check and correct complex junctions (there are no complex juctions in this 
-# example date set)
-cj <- check_compl_junctions()
+# Check and correct complex confluences (there are no complex confluences in this
+# example date set; set accum_threshold in derive_streams to a smaller value
+# to create complex confluences)
+cj <- check_compl_confluences()
 if(cj){
-  correct_compl_junctions()
+  correct_compl_confluences()
 }
 
-# calculate slope as potential predictor 
+# calculate slope as potential predictor
 execGRASS("r.slope.aspect", flags = c("overwrite","quiet"),
-parameters = list(
-  elevation = "dem",
-    slope = "slope"
-    ))
-    
+          parameters = list(
+            elevation = "dem",
+            slope = "slope"
+          ))
+
 # Prepare edges
 calc_edges()
-calc_attributes_edges(input_raster = "slope", stat_rast = "max", attr_name_rast = "maxSlo",
-  input_vector = c("landuse", "pointsources"), stat_vect = c("percent", "count"), 
-  attr_name_vect = c("landuse", "psource"))
+calc_attributes_edges(input_raster = c("slope", "landuse_r"),
+                      stat_rast = c("max", "percent"),
+                      attr_name_rast = c("maxSlo", "luse"),
+                      input_vector = "pointsources", stat_vect = "count",
+                      attr_name_vect = "psource")
 
 # Prepare site
 calc_sites()
@@ -61,15 +107,21 @@ calc_sites()
 # Usually, only one of the following methods is needed. The exact one takes
 # much longer to run
 # approximate potential predictor variables for each site based on edge values
-calc_attributes_sites_approx(input_attr_name = c("maxSlo", "agri", "forest", "grass", "urban"), 
-  output_attr_name = c("maxSloA", "agriA", "forestA", "grassA", "urbanA"),
-  stat = c("max", rep("percent", 4)))
+calc_attributes_sites_approx(input_attr_name = c("maxSlo", "lusep_1", "lusep_2",
+                                                 "lusep_3", "lusep_4", "lusep_5",
+                                                 "lusep_6", "lusep_7"),
+                             output_attr_name = c("maxSloA","luse1A", "luse2A",
+                                                  "luse_3A", "luse4A", "luse5A",
+                                                  "luse6A", "luse7A"),
+                             stat = c("max", rep("percent", 7)))
 
 # exact potential predictor variables for each site based on catchments
-calc_attributes_sites_exact(input_raster = "slope", attr_name_rast = "maxSloEx", stat_rast = "max",
-  input_vector = "landuse", attr_name_vect = "landuse", stat_vect = "percent")
+calc_attributes_sites_exact(input_raster = c("slope", "landuse_r"),
+                            attr_name_rast = c("maxSloEx", "luseE"),
+                            stat_rast = c("max", "percent"))
 
 # Plot data
+library(sp)
 dem <- readRAST("dem", ignore.stderr = TRUE)
 sites <- readVECT("sites", ignore.stderr = TRUE)
 sites_orig <-  readVECT("sites_o", ignore.stderr = TRUE)
@@ -90,5 +142,10 @@ check_ssn(ssn_dir)
 
 # Load into SSN-package
 ssn_obj <- importSSN(ssn_dir, o.write = TRUE)
+print(ssn_obj)
 }
+
+
+#Datasets shipped with openSTARS
+
 }

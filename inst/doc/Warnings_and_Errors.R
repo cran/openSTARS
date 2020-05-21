@@ -1,4 +1,4 @@
-## ----echo=FALSE----------------------------------------------------------
+## ----echo=FALSE---------------------------------------------------------------
 knitr::opts_chunk$set(
   eval = TRUE,
   warning = FALSE,
@@ -7,11 +7,10 @@ knitr::opts_chunk$set(
   comment = "#>"
 )
 
-## ----install_gh, eval=FALSE----------------------------------------------
-#  # install.packages("devtools")
-#  devtools::install_github("MiKatt/openSTARS")
+## ----github_install, eval = FALSE---------------------------------------------
+#    devtools::install_github("MiKatt/openSTARS", ref = "dev")
 
-## ----windows settings, eval = FALSE--------------------------------------
+## ----windows settings, eval = FALSE-------------------------------------------
 #    # GRASS in QGIS installation
 #    #set Path; must be done BEFORE initGRASS
 #    Sys.setenv(PATH=paste0("C:/Program Files/QGIS 2.18/bin",";", Sys.getenv("PATH")))

@@ -9,26 +9,29 @@ setup_grass_environment(dem, epsg = NULL, sites = NULL)
 \arguments{
 \item{dem}{character; path to DEM.}
 
-\item{epsg}{integer; EPSG code for the projection to use. If not given (default)
-the information is taken from the dem}
+\item{epsg}{integer (optional); EPSG code for the projection to use. If not given (default)
+the information is taken from the dem. This should ONLY be used if the \code{dem} does not 
+contain projection information and MUST be the correct one for the dem used.}
 
 \item{sites}{(deprecated); not used any more. Only included for compatibility with previous version.}
 }
 \value{
-Nothing, the 'GRASS' mapset is set to PERMANENT, the projection and
-the extent of the current location is set to the one of the dem.
+Nothing, the 'GRASS' mapset is set to PERMANENT, the extent of the current location 
+ is set to the one of the dem, and the projection is set to the one of the dem or to the 
+ one provided in \code{epsg} .
 }
 \description{
 This function sets the 'GRASS' mapset to PERMANENT and sets its projection and extension.
 }
 \note{
-A 'GRASS' session must be initiated before, see \code{\link[rgrass7]{initGRASS}}.
+A 'GRASS' session must be initiated before, see \code{\link[rgrass7]{initGRASS}}. This function 
+  uses \code{use_sp()} from the \code{rgrass7} package to support raster data.
 }
 \examples{
 \donttest{
 # Initiate GRASS session
 if(.Platform$OS.type == "windows"){
-  gisbase = "c:/Program Files/GRASS GIS 7.4.0"
+  gisbase = "c:/Program Files/GRASS GIS 7.6"
   } else {
   gisbase = "/usr/lib/grass74/"
   }

@@ -29,7 +29,7 @@
 #' \donttest{
 #' # Initiate GRASS session
 #' if(.Platform$OS.type == "windows"){
-#'   gisbase = "c:/Program Files/GRASS GIS 7.4.0"
+#'   gisbase = "c:/Program Files/GRASS GIS 7.6"
 #'   } else {
 #'   gisbase = "/usr/lib/grass74/"
 #'   }
@@ -46,11 +46,14 @@
 #'
 #' # Derive streams from DEM
 #' derive_streams(burn = 0, accum_threshold = 700, condition = TRUE, clean = TRUE)
-#'
+#' 
+#' check_compl_confluences()
+#' 
 #' # Prepare edges
 #' calc_edges()
 #' 
 #' # Plot data
+#' library(sp)
 #' dem <- readRAST('dem', ignore.stderr = TRUE)
 #' edges <- readVECT('edges', ignore.stderr = TRUE)
 #' plot(dem, col = terrain.colors(20))
@@ -59,13 +62,12 @@
 #' 
 
 calc_edges <- function() {
-  rast <- execGRASS("g.list",
+  vect <- execGRASS("g.list",
                     parameters = list(
-                      type = "rast"
+                      type = "vector"
                     ),
                     intern = TRUE)
-  # MiKatt: streams_v (vector) is not needed in calculations but streams_r (raster)
-  if (!"streams_r" %in% rast)
+  if (!"streams_v" %in% vect)
     stop("Missing data. Did you run derive_streams()?")
   
   temp_dir <- tempdir()
@@ -75,24 +77,34 @@ calc_edges <- function() {
             parameters = list(
               vector = "streams_v,edges"))
 
-  # Remove points from edges (only lines are needed).
-  # Only needed if correct_compl_junctions was not run.
-  # get maximum category value plus 1
-  nocat<-as.character(max(as.numeric(
-                                     execGRASS("v.db.select",
-                                               parameters = list(
-                                                 map= "edges",
-                                                 columns= "cat"),
-                                               intern =T )[-1]
-                                     ))+1)
-  # delete all points
-  execGRASS("v.edit",
-            flags = c("r", "quiet"),    # r: reverse selection = all
+  # # Remove points from edges (only lines are needed).
+  # # Only needed if correct_compl_junctions was not run.
+  # # get maximum category value plus 1
+  # nocat<-as.character(max(as.numeric(
+  #                                    execGRASS("v.db.select",
+  #                                              parameters = list(
+  #                                                map= "edges",
+  #                                                columns= "cat"),
+  #                                              intern =T )[-1]
+  #                                    ))+1)
+  # # delete all points
+  # execGRASS("v.edit",
+  #           flags = c("r", "quiet"),    # r: reverse selection = all
+  #           parameters = list(
+  #             map = "edges",
+  #             type = "point",
+  #             tool = "delete",
+  #             cats = nocat), ignore.stderr = T)
+  
+  # create raster of streams based on "stream" in edges
+  execGRASS("v.to.rast", flags = c("overwrite", "quiet"),
             parameters = list(
-              map = "edges",
-              type = "point",
-              tool = "delete",
-              cats = nocat), ignore.stderr = T)
+              input = "streams_v",
+              type = "line",
+              output = "streams_r",
+              use = "attr",
+              attribute_column = "stream"
+            ))
 
   # calculate basins for streams segments --------
   message("Calculating reach contributing area (RCA) ...")
@@ -119,22 +131,32 @@ calc_edges <- function() {
   # last row is total and not needed
   areas <- as.data.frame(areas[-nrow(areas), ], stringsAsFactors = FALSE)
   setDT(areas)
-  setnames(areas, names(areas),c("cat","area"))
+  setnames(areas, names(areas),c("stream","area"))
   areas[, names(areas) := lapply(.SD, as.numeric)]
+  # # MiKatt 20190417: in case Windows adds any rows with additional info
+  # if(any(is.na(areas)))
+  #   areas <- areas[- c(which(is.na(areas), arr.ind = TRUE)[,"row"]),]
+  # not possible becaus is.na is used below
 
   # calculate upstream area per stream segment
   dt.streams <- do.call(rbind,strsplit(
     execGRASS("db.select",
               parameters = list(
-                sql = "select cat, stream, next_str, prev_str01,prev_str02 from edges"
+                sql = "select stream, next_str, prev_str01,prev_str02 from edges"
               ),intern = T),
     split = '\\|'))
   colnames(dt.streams) <- dt.streams[1,]
   dt.streams <- data.table(dt.streams[-1,, drop = FALSE], "total_area" = 0, "netID" = -1)
   dt.streams[, names(dt.streams) := lapply(.SD, as.numeric)]
-  dt.streams<-merge(dt.streams, areas, by="cat", all = T)  # MiKatt: must be 'cat' not 'stream' because stream_r is based on 'cat'!
+  
+  # # MiKatt 20190417: in case Windows adds any rows with additional info
+  # if(any(is.na(dt.streams)))
+  #   dt.streams <- dt.streams[- c(which(is.na(dt.streams), arr.ind = TRUE)[,"row"]),]
+  # not possible becaus is.na is used below
+  
+  dt.streams<-merge(dt.streams, areas, by = "stream", all = T)  # was: MiKatt: must be 'cat' not 'stream' because stream_r is based on 'cat'! Is now: 'stream'!
   setkey(dt.streams, stream)
-  # set catchment area of short segments that do not have a rca (NA) to zero (mainly resulting form correct_compl_junctions())
+  # set catchment area of short segments that do not have a rca (NA) to zero (mainly resulting from correct_compl_junctions())
   dt.streams[is.na(area), area := 0 ]
 
   # MiKatt: Segments without a next segment (= -1) are outlets of catchments
@@ -151,7 +173,7 @@ calc_edges <- function() {
   dt.streams[, total_area := round(total_area / 1000000, 6)]
   dt.streams[, rid := seq_len(nrow(dt.streams)) - 1]
   dt.streams[, OBJECTID := stream]
-  dt.streams[,  ":=" (cat = NULL, next_str = NULL, prev_str01 = NULL, prev_str02 = NULL)]
+  dt.streams[,  ":=" (next_str = NULL, prev_str01 = NULL, prev_str02 = NULL)]
   utils::write.csv(dt.streams, file.path(temp_dir, "stream_network.csv"), row.names = F)
   dtype <- t(gsub("numeric", "Integer", sapply(dt.streams, class)))
   dtype[,c("total_area","area")] <- c("Real", "Real")
@@ -186,16 +208,21 @@ calc_edges <- function() {
               column = "Length",
               value = "round(Length, 2)"
             ))
-  execGRASS("v.db.renamecolumn", flags = "quiet",
+  # execGRASS("v.db.renamecolumn", flags = "quiet",
+  #           parameters = list(
+  #             map = "edges",
+  #             column = "cum_length,sourceDist"
+  #           ))
+  # execGRASS("v.db.update", flags = c("quiet"),
+  #           parameters = list(
+  #             map = "edges",
+  #             column = "sourceDist",
+  #             value = "round(sourceDist, 2)"
+  #           ))
+  execGRASS("v.db.dropcolumn", flags = "quiet",
             parameters = list(
               map = "edges",
-              column = "cum_length,sourceDist"
-            ))
-  execGRASS("v.db.update", flags = c("quiet"),
-            parameters = list(
-              map = "edges",
-              column = "sourceDist",
-              value = "round(sourceDist, 2)"
+              columns = "cum_length"
             ))
   execGRASS("v.db.renamecolumn", flags = "quiet",
             parameters = list(
@@ -240,31 +267,21 @@ calc_edges <- function() {
 #'
 #' @author Mira Kattwinkel, \email{mira.kattwinkel@@gmx.net}
 #'
-#'@examples
-#'\dontrun{
-#'  outlets <- dt.streams[next_str == -1, stream]
-#'  netID <- 1
-#'  for(i in outlets){
-#'    calcCatchmArea_assignNetID(dt.streams, id = i, netID)
-#'    netID <- netID + 1
-#'  }
-#'}
-
 calcCatchmArea_assignNetID <- function(dt, id, net_ID){
   if(dt[stream == id, prev_str01,] == 0){  # check only one of prev01 and prev02 because they are always both 0
     dt[stream == id, total_area := area]
     dt[stream == id, netID := net_ID]
   } else {
     a1 <- calcCatchmArea_assignNetID(dt, dt[stream == id, prev_str01], net_ID)
-    a2 <- calcCatchmArea_assignNetID(dt, dt[stream == id, prev_str02] ,net_ID)
+    a2 <- calcCatchmArea_assignNetID(dt, dt[stream == id, prev_str02], net_ID)
     dt[stream == id, total_area := a1 + a2 + dt[stream == id, area]]
     dt[stream == id, netID := net_ID]
   }
   return(dt[stream == id, total_area])
 }
 
-#' get_cats_edges_in_catchment#' 
-#' Returns the cats of this and all upstream edges#' 
+#' get_cats_edges_in_catchment
+#' Returns the cats of this and all upstream edges
 #' 
 #' @description Recursive function to get the stream_ids from one segment upstream.
 #' This function is used internally and is not intended to be called by the user.
@@ -282,6 +299,28 @@ get_cats_edges_in_catchment<-function(dt, str_id){
     a1 <- get_cats_edges_in_catchment(dt = dt, dt[stream == str_id, prev_str01])
     a2 <- get_cats_edges_in_catchment(dt = dt, dt[stream == str_id, prev_str02])
     return(c(dt[stream == str_id, cat], a1, a2))
+  }
+}
+
+#' get_streams_edges_in_catchment
+#' Returns the stream values of this and all upstream edges
+#' 
+#' @description Recursive function to get the stream from one segment upstream.
+#' This function is used internally and is not intended to be called by the user.
+#' 
+#' @param dt data.table containing the attributes of the stream segments
+#' @param str_id integer giving the stream_id ('stream') of the starting edge
+#' @keywords internal 
+#' @return vector of stream values of all upstream edges and the calling one.
+#' @author Mira Kattwinkel, \email{mira.kattwinkel@@gmx.net}
+#' 
+get_streams_edges_in_catchment<-function(dt, str_id){
+  if(dt[stream == str_id, prev_str01] == 0){
+    return(dt[stream == str_id, stream])
+  } else {
+    a1 <- get_streams_edges_in_catchment(dt = dt, dt[stream == str_id, prev_str01])
+    a2 <- get_streams_edges_in_catchment(dt = dt, dt[stream == str_id, prev_str02])
+    return(c(dt[stream == str_id, stream], a1, a2))
   }
 }
 

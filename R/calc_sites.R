@@ -14,6 +14,8 @@
 #' date. If not provided, it is created automatically.
 #'@param pred_sites character vector (optional); names for prediction sites 
 #'(loaded with \code{import_data}).
+#'@param maxdist integer (optional); maximum snapping distance in map units (see details).
+#' Sites farther away from edges will be deleted.
 #'
 #'@details Steps include:
 #'\itemize{
@@ -21,6 +23,7 @@
 #'gives the distance of the original position to the closest streams segment. 
 #'If this is a too large value consider running \code{\link{derive_streams}} again with
 #'smaller value for \code{accum_threshold} and/or \code{min_stream_length}.}
+#'\item{Save the new point coordinates in NEAR_X and NEAR_Y.}
 #'\item{Assign unique 'pid' and 'locID' (needed by the 'SSN' package).}
 #'\item{Get 'rid' and 'netID' of the
 #'stream segment the site intersects with (from map "edges").}
@@ -36,15 +39,19 @@
 #'
 #' If \code{locid_col} and \code{pid_col} are not provided, 'pid' and 'locID' 
 #' are identical, unique numbers. If they are provided, they are created based
-#' on these columns (as numbers, not as text). Note that repeated measurements
-#' can be joined to the sites at a later step. Then, 'pid' needs to be updated 
-#' accordingly (NOT YET IMPLEMENTED). 
+#' on these columns (as numbers, not as text). Note that measurements
+#' can be joined to the sites at a later step (including multiple parameters and
+#' multiple measurements) using \code{\link{merge_sites_measurements}}. 
+#' Then, 'pid' is updated accordingly. 
 #' 
 #' 'upDist' is calculated using
-#'\href{https://grass.osgeo.org/grass73/manuals/v.distance.html}{v.distance} with 
+#'\href{https://grass.osgeo.org/grass74/manuals/v.distance.html}{v.distance} with 
 #'upload = "to_along" which gives the distance along the stream segment to the next
 #'upstream node ('distalong'). 'upDist' is the difference between the 'upDist' 
 #' of the edge the point lies on and 'distalong'.
+#' 
+#' The unit for distances (= map units) can be found out using 
+#' execGRASS("g.proj", flags = "p").
 #'
 #'If prediction sites have been created outside of this package they can be 
 #'processed here as well. They must have been imported with \code{\link{import_data}}
@@ -62,7 +69,7 @@
 #' \donttest{
 #' # Initiate GRASS session
 #' if(.Platform$OS.type == "windows"){
-#'   gisbase = "c:/Program Files/GRASS GIS 7.4.0"
+#'   gisbase = "c:/Program Files/GRASS GIS 7.6"
 #'   } else {
 #'   gisbase = "/usr/lib/grass74/"
 #'   }
@@ -80,11 +87,12 @@
 #' # Derive streams from DEM
 #' derive_streams(burn = 0, accum_threshold = 700, condition = TRUE, clean = TRUE)
 #' 
-#' # Check and correct complex junctions (there are no complex juctions in this
-#' # example date set)
-#' cj <- check_compl_junctions()
+#' # Check and correct complex confluences (there are no complex confluences in this
+#' # example date set; set accum_threshold in derive_streams to a smaller value
+#' # to create complex confluences)
+#' cj <- check_compl_confluences()
 #' if(cj){
-#'   correct_compl_junctions()
+#'   correct_compl_confluences()
 #' }
 #'
 #' # Prepare edges
@@ -92,7 +100,9 @@
 #'
 #' # Prepare site
 #' calc_sites()
+#' 
 #' # Plot data
+#' library(sp)
 #' dem <- readRAST('dem', ignore.stderr = TRUE)
 #' edges <- readVECT('edges', ignore.stderr = TRUE)
 #' sites <- readVECT('sites', ignore.stderr = TRUE)
@@ -105,7 +115,7 @@
 #'}
 
 
-calc_sites <- function(locid_col = NULL, pid_col = NULL, pred_sites = NULL) {
+calc_sites <- function(locid_col = NULL, pid_col = NULL, pred_sites = NULL, maxdist = NULL) {
   vect <- execGRASS("g.list",
                     parameters = list(
                       type = "vect"
@@ -133,8 +143,11 @@ calc_sites <- function(locid_col = NULL, pid_col = NULL, pred_sites = NULL) {
   
   site_maps <- c("sites", pred_sites)
   site_maps <- sub("_o$","", site_maps)
-  s <- sapply(site_maps, prepare_sites, locid_c = locid_col, pid_c = pid_col)
+  s <- sapply(site_maps, prepare_sites, locid_c = locid_col, pid_c = pid_col, maxdist = maxdist)
   
+  execGRASS("v.db.dropcolumn",
+            map = "sites",
+            columns = "cat_edge")
 }
 
 #' Snap sites to streams and calculate attributes
@@ -144,14 +157,15 @@ calc_sites <- function(locid_col = NULL, pid_col = NULL, pred_sites = NULL) {
 #'  table giving a unique site identifier. 
 #'@param pid_c character (optional); column name in the sites attribute table 
 #' that distinguishes between repeated measurements at a sampling site.
+#'@param maxdist integer (optional); maximum snapping distance. Sites farther away
+#'from edges will be deleted.
 #' 
 #' @details 
 #' This function is called by \code{calc_sites} and should not be called directly.
 #' Sites are snapped to the streams and upstream distance is calculated.
-#' Sites are snapped to the streams and upstream distance is calculated.
 #'
 
-prepare_sites <- function(sites_map, locid_c = NULL, pid_c = NULL){
+prepare_sites <- function(sites_map, locid_c = NULL, pid_c = NULL, maxdist = NULL){
   execGRASS("g.copy",
             flags = c("overwrite", "quiet"),
             parameters = list(
@@ -160,11 +174,23 @@ prepare_sites <- function(sites_map, locid_c = NULL, pid_c = NULL){
   message(paste0("Preparing sites '", sites_map, "' ..."))
   # Snap sites to streams --------
   message("Snapping sites to streams ...")
-  # add 4 columns holding: stream, distance and coordinates of nearest streams
+  # add 5 columns holding: stream, distance and coordinates of nearest streams
+  
+  # drop columns if they are in sites
+  cnames <- execGRASS("db.columns", flags = "quiet",
+                      parameters = list(
+                        table = "sites"
+                      ), intern = TRUE)
+  if(any(i <- which(c("cat_edge","str_edge","dist","NEAR_X", "NEAR_Y") %in% cnames))){
+    execGRASS("v.db.dropcolumn", flags = "quiet",
+              map = "sites",
+              columns = paste0(c("cat_edge","str_edge","dist","NEAR_X", "NEAR_Y")[i], collapse = ","))
+  }
+  
   execGRASS("v.db.addcolumn",
             parameters = list(
               map = sites_map,
-              columns = "cat_edge int,dist double precision,xm double precision,ym double precision"
+              columns = "cat_edge int,str_edge int,dist double precision,NEAR_X double precision,NEAR_Y double precision"
             ))
   # calc distance
   # MiKatt: additionally get cat of nearest edge for later joining of netID and rid
@@ -174,17 +200,33 @@ prepare_sites <- function(sites_map, locid_c = NULL, pid_c = NULL){
                               to = "edges",
                               #output = "connectors",
                               upload = "cat,dist,to_x,to_y",
-                              column = "cat_edge,dist,xm,ym"))
+                              column = "cat_edge,dist,NEAR_X,NEAR_Y"))
   #! This is in R faster than in GRASS!? (which has to write to hard-drive)
   #! Other possibilities in GRASS to change coordinates?
   #! use r.stream.snap alternatively?
   sites <- readVECT(sites_map, type = "point", ignore.stderr = TRUE)
   proj4 <- proj4string(sites)
   sites <-  as(sites, "data.frame")
-  coordinates(sites) <-  ~ xm + ym
+  coordinates(sites) <-  ~ NEAR_X + NEAR_Y
   proj4string(sites) <- proj4
-  names(sites)[names(sites) %in% c( "coords.x1", "coords.x2")] <- c("xm", "ym")
+  names(sites)[names(sites) %in% c( "coords.x1", "coords.x2")] <- c("NEAR_X", "NEAR_Y")
   sites$cat_ <- NULL
+  
+  # get actual maximum snapping distance
+  mdist <- max(sites@data$dist)
+  #message(writeLines(strwrap(paste("Maximum snapping distance found:", round(mdist,3), "m"), width = 80)), appendLF = FALSE)
+  message(paste("Maximum snapping distance found:", round(mdist,3), "m"))
+  
+  # compare to given one
+  if(!is.null(maxdist)){
+    if(mdist > maxdist){
+      i <- which(sites@data$dist >= maxdist)
+      sites <- sites[-i,]
+      #message(writeLines(strwrap(paste0("There were ", length(i), " sites with snapping distance > maxdist (", maxdist," m). Sites were deleted."),
+      #        width = 80)))
+      message(paste0("There were ", length(i), " sites with snapping distance > maxdist (", maxdist," m). Sites were deleted."))
+    }
+  }
   
   ### Setting pid -----------
   # MiKatt: pid is for "repeated measurements at a singel location" 
@@ -207,11 +249,15 @@ prepare_sites <- function(sites_map, locid_c = NULL, pid_c = NULL){
     sites@data$pid <- sites@data$locID
   }
   
+  i <- which(colnames(sites@data) %in% c("cat", "cat_"))
+  sites@data <- sites@data[,-i]
+  sink("temp.txt")
   # 20180219: override projection check
   writeVECT(sites, vname = sites_map,
             v.in.ogr_flags = c("overwrite", "quiet", "o"),
             ignore.stderr = TRUE)
   rm(sites)
+  sink() 
   
   # Set netID and rid from network ---------
   message("Assigning netID and rid ...")
@@ -228,6 +274,10 @@ prepare_sites <- function(sites_map, locid_c = NULL, pid_c = NULL){
   execGRASS("db.execute",
             parameters = list(
               sql=paste0('UPDATE ', sites_map, ' SET netID=(SELECT netID FROM edges WHERE ', sites_map, '.cat_edge=edges.cat)')
+            ))
+  execGRASS("db.execute",
+            parameters = list(
+              sql=paste0('UPDATE ', sites_map, ' SET str_edge=(SELECT stream FROM edges WHERE ', sites_map, '.cat_edge=edges.cat)')
             ))
   
   # Calculate upDist ---------
@@ -307,5 +357,6 @@ prepare_sites <- function(sites_map, locid_c = NULL, pid_c = NULL){
             parameters = list(
               sql=sql_str
             ))
+  try(unlink("temp.txt"), silent = TRUE)
 }
 
