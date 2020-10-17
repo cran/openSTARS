@@ -84,11 +84,11 @@ v.in.ogr (see examples).
 Column names for the results are created as follows:
 Raster data - the column names given in \code{attr_name_rast} are used. The user should
 take care to use unique, clear names. For \code{stat_rast} = 'percentage' or 'area', 
-the output column name will be concatenated 'p' or 'a', repectively.
+the output column name will be concatenated 'p' or 'a', respectively.
 For vector data, column names are constructed from the entries in in the column 
 \code{attr_name_vect}. For counts of points, the new column name containing the counts
 is just the given name. For polygon data ('percentage' or 'area'), the names are constructed using
-the unique entries of the column with a concatenated 'p' or 'a', repectively. If, for instance, 
+the unique entries of the column with a concatenated 'p' or 'a', respectively. If, for instance, 
 for a landuse vector containing the classes 'urban' and 'arable' percentages would be calculated,
 edges would contain two new columns 'urbanp' and 'arablep'.
 
@@ -97,15 +97,21 @@ edges would contain two new columns 'urbanp' and 'arablep'.
 }
 \examples{
 \donttest{
+# Initiate and setup GRASS
+dem_path <- system.file("extdata", "nc", "elev_ned_30m.tif", package = "openSTARS")
 if(.Platform$OS.type == "windows"){
-  gisbase = "c:/Program Files/GRASS GIS 7.6"
+  grass_program_path = "c:/Program Files/GRASS GIS 7.6"
   } else {
-  gisbase = "/usr/lib/grass74/"
+  grass_program_path = "/usr/lib/grass78/"
   }
-initGRASS(gisBase = gisbase,
-    home = tempdir(),
-    override = TRUE)
 
+setup_grass_environment(dem = dem_path, 
+                        gisBase = grass_program_path,      
+                        remove_GISRC = TRUE,
+                        override = TRUE
+                        )
+gmeta()
+                        
 # Load files into GRASS
 dem_path <- system.file("extdata", "nc", "elev_ned_30m.tif", package = "openSTARS")
 sites_path <- system.file("extdata", "nc", "sites_nc.shp", package = "openSTARS")
@@ -113,11 +119,8 @@ streams_path <- system.file("extdata", "nc", "streams.shp", package = "openSTARS
 preds_v_path <- system.file("extdata", "nc", "pointsources.shp", package = "openSTARS")
 preds_r_path <- system.file("extdata", "nc", "landuse_r.tif", package = "openSTARS")
                  
-
-setup_grass_environment(dem = dem_path)
 import_data(dem = dem_path, sites = sites_path, streams = streams_path,
             predictor_vector = preds_v_path, predictor_raster = preds_r_path)
-gmeta()
 
 # Derive streams from DEM
 # burn in 'streams' 10 meters
@@ -136,8 +139,7 @@ execGRASS("r.slope.aspect", flags = c("overwrite","quiet"),
 parameters = list(
   elevation = "dem",
     slope = "slope"
-    ))
-
+    )) 
 
 # Prepare edges
 calc_edges()
@@ -150,9 +152,9 @@ calc_attributes_edges(input_raster = c("slope", "landuse_r"),
 # Plot eges with percentage of forest in the catchment (lusep_5) as line width
 edges <- readVECT('edges', ignore.stderr = TRUE)
 head(edges@data)
-lu <- readRAST("landuse_r", ignore.stderr = TRUE)
+lu <- readRAST("landuse_r", ignore.stderr = TRUE, plugin = FALSE)
 
- # plot landuse data
+# plot landuse data
 library(raster)
 op <- par()
 par(xpd = FALSE)
@@ -164,6 +166,7 @@ legend("bottom", cex = 0.75,
   legend = c("developed", "agriculture", "herbaceous", "shrubland", "forest", "water", "sediment"),
   fill = c("red", "goldenrod", "green", "forestgreen","darkgreen", "blue", "lightblue"),
   horiz = TRUE, inset = -0.175)
+  # line width is relative to the area of land use class 5 (forest) in the rca of the edge segment
 plot(edges, lwd = edges$lusep_5_c * 10, add = TRUE)    
 par <- op
 }

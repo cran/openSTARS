@@ -27,22 +27,25 @@
 #'
 #' @examples
 #' \donttest{
-#' # Initiate GRASS session
+#' # Initiate and setup GRASS
+#' dem_path <- system.file("extdata", "nc", "elev_ned_30m.tif", package = "openSTARS")
 #' if(.Platform$OS.type == "windows"){
-#'   gisbase = "c:/Program Files/GRASS GIS 7.6"
+#'   grass_program_path = "c:/Program Files/GRASS GIS 7.6"
 #'   } else {
-#'   gisbase = "/usr/lib/grass74/"
+#'   grass_program_path = "/usr/lib/grass78/"
 #'   }
-#' initGRASS(gisBase = gisbase,
-#'     home = tempdir(),
-#'     override = TRUE)
-#'
+#' 
+#' setup_grass_environment(dem = dem_path, 
+#'                         gisBase = grass_program_path,      
+#'                         remove_GISRC = TRUE,
+#'                         override = TRUE
+#'                         )
+#' gmeta()
+#'                         
 #' # Load files into GRASS
 #' dem_path <- system.file("extdata", "nc", "elev_ned_30m.tif", package = "openSTARS")
-#' sites_path <- system.file("extdata", "nc", "sites_nc.shp", package = "openSTARS")
-#' setup_grass_environment(dem = dem_path)
+#' sites_path <- system.file("extdata", "nc", "sites_nc.shp", package = "openSTARS")                  
 #' import_data(dem = dem_path, sites = sites_path)
-#' gmeta()
 #'
 #' # Derive streams from DEM
 #' derive_streams(burn = 0, accum_threshold = 700, condition = TRUE, clean = TRUE)
@@ -54,7 +57,7 @@
 #' 
 #' # Plot data
 #' library(sp)
-#' dem <- readRAST('dem', ignore.stderr = TRUE)
+#' dem <- readRAST('dem', ignore.stderr = TRUE, plugin = FALSE)
 #' edges <- readVECT('edges', ignore.stderr = TRUE)
 #' plot(dem, col = terrain.colors(20))
 #' lines(edges, col = 'blue')
@@ -69,6 +72,14 @@ calc_edges <- function() {
                     intern = TRUE)
   if (!"streams_v" %in% vect)
     stop("Missing data. Did you run derive_streams()?")
+  
+  cnames<-execGRASS("db.columns",
+                    parameters = list(
+                      table = "streams_v"
+                    ), intern=T)
+  if("prev_str03" %in% cnames){
+    stop("There are complex confluences in the stream network. Please run correct_compl_confluences() for correction.")
+  }
   
   temp_dir <- tempdir()
 

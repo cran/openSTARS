@@ -10,19 +10,19 @@ import_vector_data(data, name, layer = NULL, proj_ref_obj = NULL, snap = -1)
 \item{data}{character string or object; path to data vector file (shape), postgis 
 data source name (dsn; see details), or sp or sf data object.}
 
-\item{name}{string giving the base name of the vector data within the GRASS envrionment (i.e. output)}
+\item{name}{string giving the base name of the vector data within the GRASS environment (i.e. output)}
 
 \item{layer}{character string; default 1, particularly needed if data is a dsn for 
 importing postgis data (see details)}
 
 \item{proj_ref_obj}{character; path to a georeferenced data file to be used as reference; only
-used if \code{data} is an sf of sp object, then, the two projections are compared to find the
-correct way for importing; typically the dem raster file used in this project.}
+used if \code{data} is an sf of sp object, then, the two projections are compared to check if
+on-the-fly reprojection is needed for importing; typically the dem raster file used in this project.}
 
 \item{snap}{float; snapping threshold in map units. If != -1 (default) vertices are snapped to other vertices
 in this snapping distance during import. If used, the features are automatically cleaned afterwards 
-(see GRASS tools \href{https://grass.osgeo.org/grass74/manuals/v.import.html}{v.import}  
-and \href{https://grass.osgeo.org/grass74/manuals/v.clean.html}{v.clean} )}
+(see GRASS tools \href{https://grass.osgeo.org/grass78/manuals/v.import.html}{v.import}  
+and \href{https://grass.osgeo.org/grass78/manuals/v.clean.html}{v.clean} )}
 }
 \value{
 Nothing.

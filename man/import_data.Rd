@@ -63,8 +63,8 @@ original file names (without extension) or using the names provides in
 (typically stored as 'grid_name/w001001.adf') are used. Likewise, predictor
 vector maps can be read in from Esri Shape file (given as the full file path)
 or as sf or sp objects. Potential predictor data can also be read in later, e.g.
-using GRASS commands \href{https://grass.osgeo.org/grass74/manuals/v.import.html}{v.import} 
-or \href{https://grass.osgeo.org/grass74/manuals/r.in.gdal.html}{r.in.gdal}
+using GRASS commands \href{https://grass.osgeo.org/grass78/manuals/v.import.html}{v.import} 
+or \href{https://grass.osgeo.org/grass78/manuals/r.in.gdal.html}{r.in.gdal}
 (see examples below).
 }
 \description{
@@ -75,7 +75,7 @@ maps (raster or vector format) can be loaded.
 }
 \details{
 All vector data (sites, streams and potential predictors) is imported 
-into the current location using \href{https://grass.osgeo.org/grass74/manuals/v.import.html}{v.import}.
+into the current location using \href{https://grass.osgeo.org/grass78/manuals/v.import.html}{v.import}.
 Hence, if the projections does not match to the one of the DEM (which was used
 to specify the location in \code{\link{setup_grass_environment}}) the maps 
 are projected and imported on the fly.
@@ -83,29 +83,35 @@ All raster data are not transformed but it is assumed that they have the same
 projection as the current location. Hence, it is important to make sure that 
 they all have indeed the same projection (and same cell size) and that the correct
 one is set in \code{\link{setup_grass_environment}}. If this condition is not met,
-the raster data should be propocessed before importing.
+the raster data should be preprocessed before importing.
 Use \code{\link{check_projection}} to compare the projection of a raster data set and
-the one of the current location.
+the one of the current location (i.e the one of the dem).
 }
 \note{
-A GRASS session must be initiated before, see \code{\link[rgrass7]{initGRASS}}.
+A GRASS session must be initiated and setup before, see \code{\link{setup_grass_environment}}.
 
 If sites, pred_sites and / or streams are sp objects it is important that they 
 have a datum defined otherwise the import will not work. Hence, it is e.g. 
 better to use proj4string = CRS("+proj=tmerc +lat_0=0 +lon_0=9 +k=1 +x_0=3500000 +y_0=0 +datum=potsdam +units=m +no_defs")
 instead of proj4string = CRS("+proj=tmerc +lat_0=0 +lon_0=9 +k=1 +x_0=3500000 +y_0=0 +ellps=bessel +towgs84=598.1,73.7,418.2,0.202,0.045,-2.455,6.7 +units=m +no_defs"))
-when defining sp objects.
+when defining sp objects. However, please note that proj4 is outdated 
+(\code{link{https://www.r-spatial.org/r/2020/03/17/wkt.html}}) and will at least rise warnings.
 }
 \examples{
 \donttest{
+dem_path <- system.file("extdata", "nc", "elev_ned_30m.tif", package = "openSTARS")
 if(.Platform$OS.type == "windows"){
-  gisbase = "c:/Program Files/GRASS GIS 7.6"
+  grass_program_path = "c:/Program Files/GRASS GIS 7.6"
   } else {
-  gisbase = "/usr/lib/grass74/"
+  grass_program_path = "/usr/lib/grass78/"
   }
-initGRASS(gisBase = gisbase,
-    home = tempdir(),
-    override = TRUE)
+
+setup_grass_environment(dem = dem_path, 
+                        gisBase = grass_program_path,      
+                        remove_GISRC = TRUE,
+                        override = TRUE
+                        )
+gmeta()
 
 # Load files into GRASS
 dem_path <- system.file("extdata", "nc", "elev_ned_30m.tif", package = "openSTARS")
@@ -114,16 +120,14 @@ streams_path <- system.file("extdata", "nc", "streams.shp", package = "openSTARS
 preds_v_path <- system.file("extdata", "nc", "pointsources.shp", package = "openSTARS")
 preds_r_path <- system.file("extdata", "nc", "landuse_r.tif", package = "openSTARS")
                  
-setup_grass_environment(dem = dem_path)
 import_data(dem = dem_path, sites = sites_path, streams = streams_path,
             predictor_vector = preds_v_path, predictor_raster = preds_r_path)
-gmeta()
 
 # Plot data
 library(sp)
-dem <- readRAST("dem", ignore.stderr = TRUE)
+dem <- readRAST("dem", ignore.stderr = TRUE, plugin = FALSE)
 sites_orig <-  readVECT("sites_o", ignore.stderr = TRUE)
-lu <- readRAST("landuse_r", ignore.stderr = TRUE)
+lu <- readRAST("landuse_r", ignore.stderr = TRUE, plugin = FALSE)
 # import additional vector data
 fp <-  system.file("extdata", "nc", "pointsources.shp", package = "openSTARS")
 execGRASS("v.import", flags = c("overwrite", "quiet"),
@@ -141,15 +145,18 @@ points(ps, bg = "red", pch = 21, col = "grey", cex = 1.5)
 
 # plot landuse data
 library(raster)
+par(mfcol = c(1,1), mar = c(5,4,4,2))
 op <- par()
 par(xpd = FALSE)
 plot(raster(lu), legend = FALSE, xaxt = "n", yaxt = "n", bty = "n",
-col = c("red", "goldenrod", "green", "forestgreen","darkgreen", "blue", "lightblue"))
+     col = c("red", "goldenrod", "green", "forestgreen","darkgreen", "blue", "lightblue"))
 par(xpd = TRUE)
 legend("bottom", cex = 0.75,
-  legend = c("developed", "agriculture", "herbaceous", "shrubland", "forest", "water", "sediment"),
-  fill = c("red", "goldenrod", "green", "forestgreen","darkgreen", "blue", "lightblue"),
-  horiz = TRUE, inset = -0.175)
+       legend = c("developed", "agriculture", "herbaceous", 
+                  "shrubland", "forest", "water", "sediment"),
+       fill = c("red", "goldenrod", "green", 
+                "forestgreen","darkgreen", "blue", "lightblue"),
+       horiz = TRUE, inset = -0.175)
 par <- op
 }
 }

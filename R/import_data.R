@@ -40,12 +40,12 @@
 #' (typically stored as 'grid_name/w001001.adf') are used. Likewise, predictor
 #' vector maps can be read in from Esri Shape file (given as the full file path)
 #' or as sf or sp objects. Potential predictor data can also be read in later, e.g.
-#' using GRASS commands \href{https://grass.osgeo.org/grass74/manuals/v.import.html}{v.import} 
-#' or \href{https://grass.osgeo.org/grass74/manuals/r.in.gdal.html}{r.in.gdal}
+#' using GRASS commands \href{https://grass.osgeo.org/grass78/manuals/v.import.html}{v.import} 
+#' or \href{https://grass.osgeo.org/grass78/manuals/r.in.gdal.html}{r.in.gdal}
 #' (see examples below).
 #' 
 #' @details All vector data (sites, streams and potential predictors) is imported 
-#' into the current location using \href{https://grass.osgeo.org/grass74/manuals/v.import.html}{v.import}.
+#' into the current location using \href{https://grass.osgeo.org/grass78/manuals/v.import.html}{v.import}.
 #' Hence, if the projections does not match to the one of the DEM (which was used
 #' to specify the location in \code{\link{setup_grass_environment}}) the maps 
 #' are projected and imported on the fly.
@@ -53,17 +53,18 @@
 #' projection as the current location. Hence, it is important to make sure that 
 #' they all have indeed the same projection (and same cell size) and that the correct
 #' one is set in \code{\link{setup_grass_environment}}. If this condition is not met,
-#' the raster data should be propocessed before importing.
+#' the raster data should be preprocessed before importing.
 #' Use \code{\link{check_projection}} to compare the projection of a raster data set and
-#' the one of the current location.
+#' the one of the current location (i.e the one of the dem).
 #' 
-#' @note A GRASS session must be initiated before, see \code{\link[rgrass7]{initGRASS}}.
+#' @note A GRASS session must be initiated and setup before, see \code{\link{setup_grass_environment}}.
 #' 
 #' If sites, pred_sites and / or streams are sp objects it is important that they 
 #' have a datum defined otherwise the import will not work. Hence, it is e.g. 
 #' better to use proj4string = CRS("+proj=tmerc +lat_0=0 +lon_0=9 +k=1 +x_0=3500000 +y_0=0 +datum=potsdam +units=m +no_defs")
 #' instead of proj4string = CRS("+proj=tmerc +lat_0=0 +lon_0=9 +k=1 +x_0=3500000 +y_0=0 +ellps=bessel +towgs84=598.1,73.7,418.2,0.202,0.045,-2.455,6.7 +units=m +no_defs"))
-#' when defining sp objects.
+#' when defining sp objects. However, please note that proj4 is outdated 
+#' (\code{link{https://www.r-spatial.org/r/2020/03/17/wkt.html}}) and will at least rise warnings.
 #' 
 #' @author Eduard Szoecs, \email{eduardszoecs@@gmial.com},  Mira Kattwinkel
 #'  \email{mira.kattwinkel@@gmx.net}
@@ -71,14 +72,19 @@
 #' 
 #' @examples
 #' \donttest{
+#' dem_path <- system.file("extdata", "nc", "elev_ned_30m.tif", package = "openSTARS")
 #' if(.Platform$OS.type == "windows"){
-#'   gisbase = "c:/Program Files/GRASS GIS 7.6"
+#'   grass_program_path = "c:/Program Files/GRASS GIS 7.6"
 #'   } else {
-#'   gisbase = "/usr/lib/grass74/"
+#'   grass_program_path = "/usr/lib/grass78/"
 #'   }
-#' initGRASS(gisBase = gisbase,
-#'     home = tempdir(),
-#'     override = TRUE)
+#' 
+#' setup_grass_environment(dem = dem_path, 
+#'                         gisBase = grass_program_path,      
+#'                         remove_GISRC = TRUE,
+#'                         override = TRUE
+#'                         )
+#' gmeta()
 #' 
 #' # Load files into GRASS
 #' dem_path <- system.file("extdata", "nc", "elev_ned_30m.tif", package = "openSTARS")
@@ -87,16 +93,14 @@
 #' preds_v_path <- system.file("extdata", "nc", "pointsources.shp", package = "openSTARS")
 #' preds_r_path <- system.file("extdata", "nc", "landuse_r.tif", package = "openSTARS")
 #'                  
-#' setup_grass_environment(dem = dem_path)
 #' import_data(dem = dem_path, sites = sites_path, streams = streams_path,
 #'             predictor_vector = preds_v_path, predictor_raster = preds_r_path)
-#' gmeta()
 #' 
 #' # Plot data
 #' library(sp)
-#' dem <- readRAST("dem", ignore.stderr = TRUE)
+#' dem <- readRAST("dem", ignore.stderr = TRUE, plugin = FALSE)
 #' sites_orig <-  readVECT("sites_o", ignore.stderr = TRUE)
-#' lu <- readRAST("landuse_r", ignore.stderr = TRUE)
+#' lu <- readRAST("landuse_r", ignore.stderr = TRUE, plugin = FALSE)
 #' # import additional vector data
 #' fp <-  system.file("extdata", "nc", "pointsources.shp", package = "openSTARS")
 #' execGRASS("v.import", flags = c("overwrite", "quiet"),
@@ -114,15 +118,18 @@
 #' 
 #' # plot landuse data
 #' library(raster)
+#' par(mfcol = c(1,1), mar = c(5,4,4,2))
 #' op <- par()
 #' par(xpd = FALSE)
 #' plot(raster(lu), legend = FALSE, xaxt = "n", yaxt = "n", bty = "n",
-#' col = c("red", "goldenrod", "green", "forestgreen","darkgreen", "blue", "lightblue"))
+#'      col = c("red", "goldenrod", "green", "forestgreen","darkgreen", "blue", "lightblue"))
 #' par(xpd = TRUE)
 #' legend("bottom", cex = 0.75,
-#'   legend = c("developed", "agriculture", "herbaceous", "shrubland", "forest", "water", "sediment"),
-#'   fill = c("red", "goldenrod", "green", "forestgreen","darkgreen", "blue", "lightblue"),
-#'   horiz = TRUE, inset = -0.175)
+#'        legend = c("developed", "agriculture", "herbaceous", 
+#'                   "shrubland", "forest", "water", "sediment"),
+#'        fill = c("red", "goldenrod", "green", 
+#'                 "forestgreen","darkgreen", "blue", "lightblue"),
+#'        horiz = TRUE, inset = -0.175)
 #' par <- op
 #' }
 
@@ -130,7 +137,7 @@ import_data <- function(dem, band = 1, sites, streams = NULL, snap_streams = FAL
                         pred_sites = NULL, predictor_raster = NULL, predictor_r_names = NULL,
                         predictor_vector = NULL, predictor_v_names = NULL) {
   if (nchar(get.GIS_LOCK()) == 0)
-    stop("GRASS not initialised. Please run initGRASS().")
+    stop("GRASS not initialised. Please run setup_grass_environment().")
   if (is.null(dem) | is.null(sites))
     stop("DEM and sites are needed.")
 
@@ -179,8 +186,9 @@ import_data <- function(dem, band = 1, sites, streams = NULL, snap_streams = FAL
   
   # predictor raster maps
   if (!is.null(predictor_raster)) {
-    if(is.null(predictor_r_names)){}
+    if(is.null(predictor_r_names)){
       predictor_r_names <- do.call(rbind,base::strsplit(sapply(predictor_raster,basename,USE.NAMES=F), split="[.]"))[,1]
+    }
     #message(writeLines(strwrap(paste0("Loading raster predictor variables into GRASS as ",paste("'",predictor_r_names, "'", collapse = ", ", sep=""), " ..."),
     #         width = 80)))
     message(paste0("Loading raster predictor variables into GRASS as ",paste("'",predictor_r_names, "'", collapse = ", ", sep=""), " ..."))
@@ -254,16 +262,16 @@ import_data <- function(dem, band = 1, sites, streams = NULL, snap_streams = FAL
 #' 
 #' @param data character string or object; path to data vector file (shape), postgis 
 #' data source name (dsn; see details), or sp or sf data object.
-#' @param name string giving the base name of the vector data within the GRASS envrionment (i.e. output)
+#' @param name string giving the base name of the vector data within the GRASS environment (i.e. output)
 #' @param layer character string; default 1, particularly needed if data is a dsn for 
 #' importing postgis data (see details)
 #' @param proj_ref_obj character; path to a georeferenced data file to be used as reference; only
-#'   used if \code{data} is an sf of sp object, then, the two projections are compared to find the
-#'   correct way for importing; typically the dem raster file used in this project.
+#'   used if \code{data} is an sf of sp object, then, the two projections are compared to check if
+#'   on-the-fly reprojection is needed for importing; typically the dem raster file used in this project.
 #' @param snap float; snapping threshold in map units. If != -1 (default) vertices are snapped to other vertices
 #'   in this snapping distance during import. If used, the features are automatically cleaned afterwards 
-#'   (see GRASS tools \href{https://grass.osgeo.org/grass74/manuals/v.import.html}{v.import}  
-#'   and \href{https://grass.osgeo.org/grass74/manuals/v.clean.html}{v.clean} )
+#'   (see GRASS tools \href{https://grass.osgeo.org/grass78/manuals/v.import.html}{v.import}  
+#'   and \href{https://grass.osgeo.org/grass78/manuals/v.clean.html}{v.clean} )
 #' 
 #' @return Nothing.
 #' 
@@ -283,32 +291,52 @@ import_data <- function(dem, band = 1, sites, streams = NULL, snap_streams = FAL
 
 import_vector_data <- function(data, name, layer = NULL, proj_ref_obj = NULL, snap = -1){
   # flag "-r": only current region
-  import_flag <- TRUE
+  # import_flag <- TRUE
   if(inherits(data, 'sf')){
     data <- as(data, 'Spatial')
   }
   if(inherits(data, 'Spatial')) {
-    if(!is.null(proj_ref_obj)){
-      proj_data <- execGRASS("g.proj", flags = c("j", "f"),
-                             parameters = list(
-                               proj4 = proj4string(data)
-                             ), intern = TRUE)[1] # sites_in@proj4string@projargs does not work!
-      proj_ref <- execGRASS("g.proj", flags = c("j", "f"),
-                            parameters = list(
-                              georef = proj_ref_obj
-                            ), intern = TRUE, ignore.stderr = TRUE)
-      if(identical(proj_ref, proj_data)) {
-        writeVECT(data, name,  v.in.ogr_flags = c("overwrite", "quiet", "r", "o"), # "o": overwrite projection check
-                  ignore.stderr=TRUE)
-        import_flag <- FALSE
-      }
-    }
-    if(import_flag) {
+    # if(!is.null(proj_ref_obj)){
+
+      # MIKatt 20200720
+      # writeVECT also " moves a Spatial*DataFrame object through a temporary shapefile to a GRASS vector object file".
+      # Hence, just write temp shapefile and use v.import without projection check here!
+      # import_flag not needed
+      
+      # MiKatt 20200717 wkt option but not much better than proj4
+      # temp_dir <- tempdir()
+      # wkt_file <- file.path(temp_dir, "wkt_data.prj")
+      # write(paste(wkt(data)), file = wkt_file)
+      # proj_data <- execGRASS("g.proj", flags = c("w", "f"),
+      #                        parameters = list(
+      #                          wkt = wkt_file
+      #                        ), intern = TRUE)
+      # proj_ref <- execGRASS("g.proj", flags = c("w", "f"),
+      #                       parameters = list(
+      #                         georef = proj_ref_obj
+      #                       ), intern = TRUE, ignore.stderr = TRUE)
+      # invisible(file.remove(file.path(temp_dir,"wkt_data.prj")))
+      
+    #   proj_data <- execGRASS("g.proj", flags = c("j", "f"),
+    #                          parameters = list(
+    #                            proj4 = proj4string(data)
+    #                          ), intern = TRUE)[1] # sites_in@proj4string@projargs does not work!
+    #   proj_ref <- execGRASS("g.proj", flags = c("j", "f"),
+    #                         parameters = list(
+    #                           georef = proj_ref_obj
+    #                         ), intern = TRUE, ignore.stderr = TRUE)
+    #   if(identical(proj_ref, proj_data)) {
+    #     writeVECT(data, name,  v.in.ogr_flags = c("overwrite", "quiet", "r", "o"), # "o": overwrite projection check
+    #               ignore.stderr=TRUE)
+    #     import_flag <- FALSE
+    #   }
+    # }
+    #if(import_flag) {
         rgdal::writeOGR(obj = data, dsn = tempdir(), layer = name, driver="ESRI Shapefile", overwrite_layer = TRUE)
         data <- file.path(tempdir(), paste0(name, ".shp"))
-      }
+      #}
   } 
-  if(import_flag) {
+  #if(import_flag) {
     # gives error on Linux if projection is not identical but it works!
     # 'intern' and 'ignore.stderr' to suppress error messages
     if(is.null(layer)){
@@ -328,7 +356,7 @@ import_vector_data <- function(data, name, layer = NULL, proj_ref_obj = NULL, sn
                   snap = snap,
                   extent = "region"),  # to import into current region (= flags("r") in v.in.ogr)
                 intern = TRUE, ignore.stderr = TRUE)
-    }
+    #}
     if(snap != -1){
       execGRASS("v.clean", flags = c("c", "quiet"),
                 parameters = list(
@@ -353,41 +381,57 @@ import_vector_data <- function(data, name, layer = NULL, proj_ref_obj = NULL, sn
 }
 
 
-#' Compare projection raster data to the one of the current GRASS location.
+#' Show the projection of raster data and compare to the current GRASS location.
 #' 
-#' @description Check if the procection of raster files matches the one of the 
-#' current region
+#' @description Check if the projection of raster files matches the region of the 
+#' current location
 #' 
 #' @param path character string vector; path raster data file(s)
+#' @param format character string; how to format the output (see details)
 #' 
 #' @return Nothing.
 #' 
-#' @details Prints out a table of the PROJ.4 elements of the projection
-#'   information of the current GRASS location and of the raster file(s) as
-#'   well as one columns for each comparison indicating the differences. 
-#'   Based on this information it can be decided if the data can be read
-#'   into GRASS (\code{\link{import_data}}) without prior processing, i.e.
+#' @details This is a wrapper for the GRASS function
+#'   \href{https://grass.osgeo.org/grass78/manuals/g.proj.html}{g.proj}. 
+#'   It prints out the projection information of the current location
+#'   and of the raster file(s). Based on this information it can be decided if the data 
+#'   can be read into GRASS (\code{\link{import_data}}) without prior processing, i.e.
 #'   if all raster data are of the same projection.
+#'   Different output options can be chosen:
+#'   * \code{wkt} WKT format (default)
+#'   * \code{grass} conventional GRASS format
+#'   * \code{shell} shell script style
+#'   * \code{proj4} PROJ.4 format (note that this format is deprecated)
 #'   
 #' @export
 
-check_projection <- function(path){
-    loc_proj <- execGRASS("g.proj", flags = c("j"),
-                        intern = TRUE, ignore.stderr = TRUE)
-  comp <- loc_proj
-  n <- length(path)
-  
-  for(i in 1:n){
-    rast_proj <- execGRASS("g.proj", flags = c("j"),
-                          parameters = list(
-                            georef = path[i]
-                          ), intern = TRUE)
-    comp <- cbind(comp, rast_proj)
-    comp <- cbind(comp, comp[,1] == comp[,2*i])
+check_projection <- function(path, format = "wkt"){
+  format_flag <- "w"
+  if(format == "grass"){
+    format_flag <- "p"
+  } else if(format == "shell"){
+    format_flag <- "g"
+  } else if(format == "proj4"){
+    format_flag <- "j"
   }
-  
-  fnames <- sapply(1:n, function(x) basename(path[x]))
-  cnames <- paste0("comp", 1:n)
-  colnames(comp) <- c("GRASS project", c(sapply(1:n, function(x) c(fnames[x], cnames[x]))))
-  print(comp)
+
+  loc_proj <- execGRASS("g.proj", flags = c(format_flag),
+                        intern = TRUE)
+  message("current location")
+  print(loc_proj)
+
+  n <- length(path)
+  for(i in 1:n){
+    rast_proj <- execGRASS("g.proj", flags = c(format_flag),
+              parameters = list(
+                georef = path[i]
+              ), intern = TRUE)
+    message(paste0(basename(path[i])))
+    if(identical(loc_proj, rast_proj)){
+      message("Projection seems to match current location")
+    } else {
+      message("Projection seem to be different from current location; please consider reprojection before importing.")
+    }
+    print(rast_proj)
+  }
 }

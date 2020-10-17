@@ -29,23 +29,24 @@
 #' 
 #' @examples
 #' \donttest{
-#' # Initiate GRASS session
+#' dem_path <- system.file("extdata", "nc", "elev_ned_30m.tif", package = "openSTARS")
 #' if(.Platform$OS.type == "windows"){
-#'   gisbase = "c:/Program Files/GRASS GIS 7.6"
+#'   grass_program_path = "c:/Program Files/GRASS GIS 7.6"
 #'   } else {
-#'   gisbase = "/usr/lib/grass74/"
+#'   grass_program_path = "/usr/lib/grass78/"
 #'   }
-#' initGRASS(gisBase = gisbase,
-#'     home = tempdir(),
-#'     override = TRUE)
-#'
+#' 
+#' setup_grass_environment(dem = dem_path, 
+#'                         gisBase = grass_program_path,      
+#'                         remove_GISRC = TRUE,
+#'                         override = TRUE
+#'                         )
+#' gmeta()
+#'                         
 #' # Load files into GRASS
 #' dem_path <- system.file("extdata", "nc", "elev_ned_30m.tif", package = "openSTARS")
 #' sites_path <- system.file("extdata", "nc", "sites_nc.shp", package = "openSTARS")
-#' lakes_path <- system.file("extdata", "nc", "lakes.shp", package = "openSTARS")
-#' setup_grass_environment(dem = dem_path)
 #' import_data(dem = dem_path, sites = sites_path)
-#' gmeta()
 #'
 #' # Derive streams from DEM
 #' derive_streams(burn = 0, accum_threshold = 100, condition = TRUE, clean = TRUE)
@@ -58,19 +59,20 @@
 #'   correct_compl_confluences()
 #' }
 #' 
+#' lakes_path <- system.file("extdata", "nc", "lakes.shp", package = "openSTARS")
 #' delete_lakes(lakes = lakes_path)
 #' 
 #' # plot
 #' library(sp)
-#' dem <- readRAST('dem', ignore.stderr = TRUE)
+#' dem <- readRAST('dem', ignore.stderr = TRUE, plugin = FALSE)
 #' streams <- readVECT('streams_v', ignore.stderr = TRUE)
 #' streams_with_lakes <- readVECT('streams_v_prev_lakes', ignore.stderr = TRUE)
 #' lakes <- readVECT('lakes', ignore.stderr = TRUE)
-
+#' 
 #' plot(dem, col = terrain.colors(20), axes = TRUE)
-#' lines(streams_with_lakes, col = 'red', lty = 2, lwd = 2)
+#' plot(lakes, add = TRUE, col = "grey")
+#' lines(streams_with_lakes, col = 'red', lty = 1, lwd = 2)
 #' lines(streams, col = 'blue', lty = 4, lwd = 2)
-
 #' legend("topright", col = c("red", "blue"), lty = c(1,4), lwd = c(2,2), 
 #'   legend = c("through lakes", "lakes cut out"))
 #' }
@@ -132,32 +134,40 @@ delete_lakes <- function(lakes, keep = TRUE){
             ))
   
   # get start and end coordinates of streams
-  execGRASS("v.db.addcolumn", parameters = list(
-    map = "streams_wo_lakes",
-    columns = "end_x double,end_y double,start_x double,start_y double,new_length double"
-  ))
-  execGRASS("v.to.db", flags = c("quiet"), 
-            parameters = list(
-              map = "streams_wo_lakes", 
-              type = "line", 
-              option = "end",
-              columns = "end_x,end_y"
-            ))
-  execGRASS("v.to.db", flags = c("quiet"), 
-            parameters = list(
-              map = "streams_wo_lakes", 
-              type = "line", 
-              option = "start",
-              columns = "start_x,start_y"
-            ))
-  execGRASS("v.to.db", flags = c("quiet"), 
-            parameters = list(
-              map = "streams_wo_lakes", 
-              type = "line", 
-              option = "length",
-              columns = "new_length"
-            ))
-
+  ## GRASS version below 7.8
+  ## v.to.db needs the column to be pobulated to exist; from 7.8 onward this column is created and existing ones are not automatically overwritten   
+  # if(compareVersion(strsplit(system2("grass",  "--version", stdout = TRUE, stderr = TRUE)[1], " ")[[1]][3], "7.8") < 0){
+  #   execGRASS("v.db.addcolumn", parameters = list(
+  #     map = "streams_wo_lakes",
+  #     columns = "end_x double,end_y double,start_x double,start_y double,new_length double"
+  #   ))
+  # }
+  # execGRASS("v.to.db", flags = c("quiet"), 
+  #           parameters = list(
+  #             map = "streams_wo_lakes", 
+  #             type = "line", 
+  #             option = "end",
+  #             columns = "end_x,end_y"
+  #           ))
+  # execGRASS("v.to.db", flags = c("quiet"), 
+  #           parameters = list(
+  #             map = "streams_wo_lakes", 
+  #             type = "line", 
+  #             option = "start",
+  #             columns = "start_x,start_y"
+  #           ))
+  # execGRASS("v.to.db", flags = c("quiet"), 
+  #           parameters = list(
+  #             map = "streams_wo_lakes", 
+  #             type = "line", 
+  #             option = "length",
+  #             columns = "new_length"
+  #           ))
+  
+  grass_v.to.db(map = "streams_wo_lakes", option = "end", columns = c("end_x", "end_y"), format = "double")
+  grass_v.to.db(map = "streams_wo_lakes", option = "start", columns = c("start_x", "start_y"), format = "double")
+  grass_v.to.db(map = "streams_wo_lakes", option = "length", columns = "new_length", format = "double")
+  
   sink("temp.txt")
   streams <- readVECT("streams_wo_lakes")
   sink()

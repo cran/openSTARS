@@ -26,19 +26,19 @@ i.e. more than two inflows to an outflow), new confluences of only two streams
 are created:
 1. complex confluences are found based on the fact that the outflow has more than
 two previous streams
-2. the inflow with the shortest cummulative length from its source  is found; 
+2. the inflow with the shortest cumulative length from its source  is found; 
 the end of this segment will be moved
 3. the inflow with the smallest angle to this inflow is found;
-this segment will be cut into tow segments close to the juntion using the GRASS function
-\href{https://grass.osgeo.org/grass74/manuals/v.edit.html}{v.edit}(tool =
+this segment will be cut into tow segments close to the junction using the GRASS function
+\href{https://grass.osgeo.org/grass78/manuals/v.edit.html}{v.edit}(tool =
 break) creating a new confluence
 4. the shortest inflow found in 2 is moved to the newly created confluence using
-\href{https://grass.osgeo.org/grass74/manuals/v.edit.html}{v.edit}(tool =
+\href{https://grass.osgeo.org/grass78/manuals/v.edit.html}{v.edit}(tool =
 vertexmove)
 5. all lengths are updated (segment length, cumulative length, i.e. length of the stream
 from the source, distance to the outlet).
 The distance the shortest confluence is moved depends on the number of inflows. For three 
-inflows, it is moved 1/12 time the DEM cellsize upstream, for seven (the extremly rare maximum)
+inflows, it is moved 1/12 time the DEM cellsize upstream, for seven (the extremely rare maximum)
 5/12 * cellsize.
 }
 \note{
@@ -47,23 +47,26 @@ inflows, it is moved 1/12 time the DEM cellsize upstream, for seven (the extreml
 }
 \examples{
 \donttest{
-# Initiate GRASS session
+# Initiate and setup GRASS
+dem_path <- system.file("extdata", "nc", "elev_ned_30m.tif", package = "openSTARS")
 if(.Platform$OS.type == "windows"){
-  gisbase = "c:/Program Files/GRASS GIS 7.6"
+  grass_program_path = "c:/Program Files/GRASS GIS 7.6"
   } else {
-  gisbase = "/usr/lib/grass74/"
+  grass_program_path = "/usr/lib/grass78/"
   }
-initGRASS(gisBase = gisbase,
-    home = tempdir(),
-    override = TRUE)
+
+setup_grass_environment(dem = dem_path, 
+                        gisBase = grass_program_path,      
+                        remove_GISRC = TRUE,
+                        override = TRUE
+                        )
+gmeta()
 
 # Load files into GRASS
 dem_path <- system.file("extdata", "nc", "elev_ned_30m.tif", package = "openSTARS")
 sites_path <- system.file("extdata", "nc", "sites_nc.shp", package = "openSTARS")
 streams_path <- system.file("extdata", "nc", "streams.shp", package = "openSTARS")
-setup_grass_environment(dem = dem_path)
 import_data(dem = dem_path, sites = sites_path, streams = streams_path)
-gmeta()
 
 # Derive streams from DEM
 derive_streams(burn = 10, accum_threshold = 100, condition = TRUE, clean = TRUE)
@@ -77,7 +80,7 @@ if(cj){
 
 # plot
 library(sp)
-dem <- readRAST('dem', ignore.stderr = TRUE)
+dem <- readRAST('dem', ignore.stderr = TRUE, plugin = FALSE)
 streams <- readVECT('streams_v', ignore.stderr = TRUE)
 streams_orig <- readVECT('streams_v_o3', ignore.stderr = TRUE)
 # zoom to a relevant part of the dem

@@ -12,7 +12,7 @@
 #'@param pid_col character (optional); column name in the sites attribute table 
 #' that distinguishes between repeated measurements at a sampling site, e.g. by 
 #' date. If not provided, it is created automatically.
-#'@param pred_sites character vector (optional); names for prediction sites 
+#'@param predictions character vector (optional); names for prediction sites 
 #'(loaded with \code{import_data}).
 #'@param maxdist integer (optional); maximum snapping distance in map units (see details).
 #' Sites farther away from edges will be deleted.
@@ -35,7 +35,7 @@
 #'stream representation as lines, derivation of streams from dem, etc.). To
 #'assign an exact position of the sites on the network they are moved to the
 #'closest stream segment (snapped) using the GRASS function
-#'\href{https://grass.osgeo.org/grass74/manuals/v.distance.html}{v.distance}.
+#'\href{https://grass.osgeo.org/grass78/manuals/v.distance.html}{v.distance}.
 #'
 #' If \code{locid_col} and \code{pid_col} are not provided, 'pid' and 'locID' 
 #' are identical, unique numbers. If they are provided, they are created based
@@ -45,7 +45,7 @@
 #' Then, 'pid' is updated accordingly. 
 #' 
 #' 'upDist' is calculated using
-#'\href{https://grass.osgeo.org/grass74/manuals/v.distance.html}{v.distance} with 
+#'\href{https://grass.osgeo.org/grass78/manuals/v.distance.html}{v.distance} with 
 #'upload = "to_along" which gives the distance along the stream segment to the next
 #'upstream node ('distalong'). 'upDist' is the difference between the 'upDist' 
 #' of the edge the point lies on and 'distalong'.
@@ -67,22 +67,25 @@
 #' 
 #' @examples 
 #' \donttest{
-#' # Initiate GRASS session
+#' # Initiate and setup GRASS
+#' dem_path <- system.file("extdata", "nc", "elev_ned_30m.tif", package = "openSTARS")
 #' if(.Platform$OS.type == "windows"){
-#'   gisbase = "c:/Program Files/GRASS GIS 7.6"
+#'   grass_program_path = "c:/Program Files/GRASS GIS 7.6"
 #'   } else {
-#'   gisbase = "/usr/lib/grass74/"
+#'   grass_program_path = "/usr/lib/grass78/"
 #'   }
-#' initGRASS(gisBase = gisbase,
-#'     home = tempdir(),
-#'     override = TRUE)
-#'
+#' 
+#' setup_grass_environment(dem = dem_path, 
+#'                         gisBase = grass_program_path,      
+#'                         remove_GISRC = TRUE,
+#'                         override = TRUE
+#'                         )
+#' gmeta()
+#'                         
 #' # Load files into GRASS
 #' dem_path <- system.file("extdata", "nc", "elev_ned_30m.tif", package = "openSTARS")
 #' sites_path <- system.file("extdata", "nc", "sites_nc.shp", package = "openSTARS")
-#' setup_grass_environment(dem = dem_path)
 #' import_data(dem = dem_path, sites = sites_path)
-#' gmeta()
 #'
 #' # Derive streams from DEM
 #' derive_streams(burn = 0, accum_threshold = 700, condition = TRUE, clean = TRUE)
@@ -103,7 +106,7 @@
 #' 
 #' # Plot data
 #' library(sp)
-#' dem <- readRAST('dem', ignore.stderr = TRUE)
+#' dem <- readRAST('dem', ignore.stderr = TRUE, plugin = FALSE)
 #' edges <- readVECT('edges', ignore.stderr = TRUE)
 #' sites <- readVECT('sites', ignore.stderr = TRUE)
 #' sites_o <- readVECT('sites_o', ignore.stderr = TRUE)
@@ -115,7 +118,7 @@
 #'}
 
 
-calc_sites <- function(locid_col = NULL, pid_col = NULL, pred_sites = NULL, maxdist = NULL) {
+calc_sites <- function(locid_col = NULL, pid_col = NULL, predictions = NULL, maxdist = NULL) {
   vect <- execGRASS("g.list",
                     parameters = list(
                       type = "vect"
@@ -131,17 +134,17 @@ calc_sites <- function(locid_col = NULL, pid_col = NULL, pred_sites = NULL, maxd
   if (!"edges" %in% vect)
     stop("Edges not found. Did you run calc_edges()?")
   
-  if(!is.null(pred_sites)){
-   i <- grep("_o$",pred_sites)
-   if(length(i) > 0){
-    pred_sites[-i] <- paste0(pred_sites[-i],"_o")
-   } else
-     pred_sites <- paste0(pred_sites,"_o")     
-   if (any(!pred_sites %in% vect))
-     stop("Prediction sites not found. Did you run import_data() on them?")
+  if(!is.null(predictions)){
+    i <- grep("_o$",predictions)
+    if(length(i) > 0){
+      predictions[-i] <- paste0(predictions[-i],"_o")
+    } else
+      predictions <- paste0(predictions,"_o")     
+    if (any(!predictions %in% vect))
+      stop("Prediction sites not found. Did you run import_data() on them?")
   }
   
-  site_maps <- c("sites", pred_sites)
+  site_maps <- c("sites", predictions)
   site_maps <- sub("_o$","", site_maps)
   s <- sapply(site_maps, prepare_sites, locid_c = locid_col, pid_c = pid_col, maxdist = maxdist)
   
@@ -164,7 +167,6 @@ calc_sites <- function(locid_col = NULL, pid_col = NULL, pred_sites = NULL, maxd
 #' This function is called by \code{calc_sites} and should not be called directly.
 #' Sites are snapped to the streams and upstream distance is calculated.
 #'
-
 prepare_sites <- function(sites_map, locid_c = NULL, pid_c = NULL, maxdist = NULL){
   execGRASS("g.copy",
             flags = c("overwrite", "quiet"),
@@ -179,7 +181,7 @@ prepare_sites <- function(sites_map, locid_c = NULL, pid_c = NULL, maxdist = NUL
   # drop columns if they are in sites
   cnames <- execGRASS("db.columns", flags = "quiet",
                       parameters = list(
-                        table = "sites"
+                        table = sites_map
                       ), intern = TRUE)
   if(any(i <- which(c("cat_edge","str_edge","dist","NEAR_X", "NEAR_Y") %in% cnames))){
     execGRASS("v.db.dropcolumn", flags = "quiet",
@@ -207,10 +209,39 @@ prepare_sites <- function(sites_map, locid_c = NULL, pid_c = NULL, maxdist = NUL
   sites <- readVECT(sites_map, type = "point", ignore.stderr = TRUE)
   proj4 <- proj4string(sites)
   sites <-  as(sites, "data.frame")
-  coordinates(sites) <-  ~ NEAR_X + NEAR_Y
+  sp::coordinates(sites) <-  ~ NEAR_X + NEAR_Y
   proj4string(sites) <- proj4
   names(sites)[names(sites) %in% c( "coords.x1", "coords.x2")] <- c("NEAR_X", "NEAR_Y")
   sites$cat_ <- NULL
+  
+  #####################################################
+  # MiKatt v.in.ascii reads x and y as INTEGER!
+  # cnames <- execGRASS("db.columns", flags = "quiet",
+  #                     parameters = list(
+  #                       table = sites_map
+  #                     ), intern = TRUE)
+  # execGRASS("v.db.select", flags = c("f", "quiet", "overwrite"),
+  #           parameters = list(
+  #             map = sites_map,
+  #             columns = paste0(cnames, collapse = ","),
+  #             file = file.path(tempdir(), "new_sites.txt")
+  #           ))
+  # execGRASS("v.in.ascii", flags =c("quiet", "overwrite"),
+  #           parameters = list(
+  #             input = file.path(tempdir(), "new_sites.txt"),
+  #             output = sites_map,
+  #             format = "standard",
+  #             x = which(cnames == "NEAR_X"),
+  #             y = which(cnames == "NEAR_Y"),
+  #             cat = which(cnames == "cat")
+  #           )) 
+  # .... execGRASS("v.db.select", flags = c("c"),
+  #           parameters = list(
+  #             map = sites_map,
+  #             column = "distance"
+  #           ), intern = TRUE)
+  #####################################################
+  
   
   # get actual maximum snapping distance
   mdist <- max(sites@data$dist)
@@ -343,7 +374,7 @@ prepare_sites <- function(sites_map, locid_c = NULL, pid_c = NULL, maxdist = NUL
             parameters = list(
               sql=sql_str
             ))
-
+  
   execGRASS("v.db.addcolumn",
             flags = c("quiet"),
             parameters = list(
